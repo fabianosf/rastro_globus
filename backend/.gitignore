@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+db.sqlite3
+media/
+*.log
+.DS_Store
+../conf/
+conf/
+*.dat
+chave.key
