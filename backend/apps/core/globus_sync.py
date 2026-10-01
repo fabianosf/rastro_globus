@@ -12,7 +12,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .globus_oracle import GlobusOracleClient, GlobusOracleError, _call_timeout_ms
-from .models import CompraGlobus, FornecedorGlobus, PecaGlobus, SyncLog, VeiculoGlobus
+from .models import CompraGlobus, FornecedorGlobus, PecaGlobus, SaidaGlobus, SyncLog, VeiculoGlobus
 
 SQL_SYNC_PECAS = """
 SELECT
@@ -83,6 +83,59 @@ WHERE A.CODIGOHISMOV IN (1, 10)
   AND A.CODIGOEMPRESA IN (1, 2, 3)
   AND A.DATAMOVTO >= :data_ini
   AND A.DATAMOVTO < :data_fim_exclusive
+{grupo_filter}
+"""
+
+SQL_SYNC_SAIDAS = """
+SELECT
+    A.CODIGOEMPRESA AS cod_empresa,
+    DECODE(
+        A.CODIGOEMPRESA,
+        1, 'Viacao Redentor Ltda',
+        2, 'Transportes Futuro Ltda',
+        3, 'Transportes Barra Ltda',
+        TO_CHAR(A.CODIGOEMPRESA)
+    ) AS empresa,
+    A.SEQMOVTO AS seqmovto,
+    B.CODIGOMATINT AS codigomatint,
+    A.DATAMOVTO AS data_movto,
+    TRIM(H.TIPOHISMOV) AS tipo_his,
+    TRIM(C.CODIGOINTERNOMATERIAL) AS peca_codigo,
+    TRIM(C.DESCRICAOMAT) AS peca_descricao,
+    TRIM(TO_CHAR(COALESCE(V1.PREFIXOVEIC, V2.PREFIXOVEIC))) AS veiculo_codigo,
+    TRIM(TO_CHAR(F.NUMERONF)) AS numero_nf,
+    TRIM(TO_CHAR(E.NRFORN)) AS fornecedor_codigo,
+    TRIM(E.NFANTASIAFORN) AS fornecedor_nome,
+    B.QTDEITENSMOVTO AS quantidade,
+    D.VALORUNITARIOITENSNF AS valor_unitario
+FROM GLOBUS.EST_MOVTO A
+JOIN GLOBUS.EST_ITENSMOVTO B
+  ON B.SEQMOVTO = A.SEQMOVTO
+JOIN GLOBUS.EST_HISTORICOMOVTO H
+  ON H.CODIGOHISMOV = A.CODIGOHISMOV
+JOIN GLOBUS.EST_CADMATERIAL C
+  ON C.CODIGOMATINT = B.CODIGOMATINT
+LEFT JOIN GLOBUS.BGM_NOTAFISCAL F
+  ON F.CODINTNF = A.CODINTNF
+LEFT JOIN GLOBUS.EST_ITENSNF D
+  ON D.CODINTNF = F.CODINTNF
+ AND D.CODIGOMATINT = B.CODIGOMATINT
+LEFT JOIN GLOBUS.BGM_FORNECEDOR E
+  ON E.CODIGOFORN = F.CODIGOFORN
+LEFT JOIN GLOBUS.EST_REQUISICAO R
+  ON R.NUMERORQ = A.NUMERORQ
+LEFT JOIN GLOBUS.FRT_CADVEICULOS V1
+  ON V1.CODIGOVEIC = R.CODIGOVEIC
+LEFT JOIN GLOBUS.EST_OUTRASSAIDAS OS
+  ON TO_CHAR(OS.NROUTSAI) = TO_CHAR(A.DOCUMENTO)
+ AND OS.CODIGOEMPRESA = A.CODIGOEMPRESA
+LEFT JOIN GLOBUS.FRT_CADVEICULOS V2
+  ON V2.CODIGOVEIC = OS.CODIGOVEIC
+WHERE TRIM(H.TIPOHISMOV) IN ('SA', 'SV', 'DS', 'RA')
+  AND A.CODIGOEMPRESA IN (1, 2, 3)
+  AND A.DATAMOVTO >= :data_ini
+  AND A.DATAMOVTO < :data_fim_exclusive
+  AND COALESCE(V1.PREFIXOVEIC, V2.PREFIXOVEIC) IS NOT NULL
 {grupo_filter}
 """
 
@@ -160,16 +213,20 @@ def _last_ok_inicio(tipo: str) -> datetime | None:
     return log.inicio if log else None
 
 
-def _compras_window(full: bool) -> tuple[date, date]:
+def _movto_window(full: bool, tipo_log: str) -> tuple[date, date]:
     hoje = timezone.localdate()
     fim_exclusive = hoje + timedelta(days=1)
     if full:
         return hoje.replace(year=hoje.year - 5), fim_exclusive
-    last = _last_ok_inicio(SyncLog.Tipo.COMPRAS)
+    last = _last_ok_inicio(tipo_log)
     if last is None:
         return hoje.replace(year=hoje.year - 5), fim_exclusive
     ini = (last - timedelta(days=3)).date()
     return ini, fim_exclusive
+
+
+def _compras_window(full: bool) -> tuple[date, date]:
+    return _movto_window(full, SyncLog.Tipo.COMPRAS)
 
 
 def _oracle_client() -> GlobusOracleClient:
@@ -188,7 +245,7 @@ def _run_sync(
     log = SyncLog.objects.create(
         tipo=tipo,
         inicio=inicio,
-        status=SyncLog.Status.ERRO,
+        status=SyncLog.Status.RODANDO,
         linhas_lidas=0,
         linhas_gravadas=0,
     )
@@ -399,11 +456,82 @@ def sync_compras(*, full: bool = False) -> SyncLog:
     return _run_sync(SyncLog.Tipo.COMPRAS, reader, _upsert_compras)
 
 
+def _upsert_saidas(batch: list[dict]) -> int:
+    now = timezone.now()
+    objs = []
+    for row in batch:
+        veiculo = _as_str(row.get("veiculo_codigo"), 40)
+        peca = _as_str(row.get("peca_codigo"), 40)
+        if not veiculo or not peca:
+            continue
+        chave = compra_chave_unica(
+            row.get("cod_empresa"),
+            row.get("seqmovto"),
+            row.get("codigomatint"),
+            row.get("data_movto"),
+            f"{veiculo}|{_as_str(row.get('tipo_his'), 10)}",
+        )
+        objs.append(
+            SaidaGlobus(
+                chave_unica=chave,
+                empresa=_as_str(row.get("empresa"), 80),
+                veiculo_codigo=veiculo,
+                peca_codigo=peca,
+                peca_descricao=_as_str(row.get("peca_descricao"), 255),
+                data_movto=_as_date(row.get("data_movto")),
+                tipo_his=_as_str(row.get("tipo_his"), 10),
+                numero_nf=_as_str(row.get("numero_nf"), 30),
+                fornecedor_codigo=_as_str(row.get("fornecedor_codigo"), 40),
+                fornecedor_nome=_as_str(row.get("fornecedor_nome"), 200),
+                quantidade=_as_decimal(row.get("quantidade")),
+                valor_unitario=_as_decimal(row.get("valor_unitario")),
+                atualizado_em=now,
+            )
+        )
+    if not objs:
+        return 0
+    with transaction.atomic():
+        SaidaGlobus.objects.bulk_create(
+            objs,
+            update_conflicts=True,
+            unique_fields=["chave_unica"],
+            update_fields=[
+                "empresa",
+                "veiculo_codigo",
+                "peca_codigo",
+                "peca_descricao",
+                "data_movto",
+                "tipo_his",
+                "numero_nf",
+                "fornecedor_codigo",
+                "fornecedor_nome",
+                "quantidade",
+                "valor_unitario",
+                "atualizado_em",
+            ],
+            batch_size=1000,
+        )
+    return len(objs)
+
+
+def sync_saidas(*, full: bool = False) -> SyncLog:
+    data_ini, data_fim_exclusive = _movto_window(full, SyncLog.Tipo.SAIDAS)
+    grupo = _grupo_filter_sql("C")
+    sql = SQL_SYNC_SAIDAS.format(grupo_filter=grupo)
+    params = {"data_ini": data_ini, "data_fim_exclusive": data_fim_exclusive}
+
+    def reader(client: GlobusOracleClient):
+        return client.iter_batches(sql, params, arraysize=1000)
+
+    return _run_sync(SyncLog.Tipo.SAIDAS, reader, _upsert_saidas)
+
+
 TIPOS_SYNC = {
     SyncLog.Tipo.PECAS: sync_pecas,
     SyncLog.Tipo.VEICULOS: sync_veiculos,
     SyncLog.Tipo.FORNECEDORES: sync_fornecedores,
     SyncLog.Tipo.COMPRAS: sync_compras,
+    SyncLog.Tipo.SAIDAS: sync_saidas,
 }
 
 
@@ -418,6 +546,7 @@ def run_sync(*, full: bool = False, tipo: str | None = None) -> list[SyncLog]:
         SyncLog.Tipo.VEICULOS,
         SyncLog.Tipo.FORNECEDORES,
         SyncLog.Tipo.COMPRAS,
+        SyncLog.Tipo.SAIDAS,
     ):
         logs.append(TIPOS_SYNC[name](full=full))
     return logs
@@ -474,12 +603,13 @@ def compras_por_codigos_local(
     return out
 
 
-def sync_status_payload() -> dict[str, Any]:
-    """Payload para GET /api/globus/status/ baseado em SyncLog."""
+def sync_status_payload(*, ping_oracle: bool = True) -> dict[str, Any]:
+    """Payload de status do espelho (SyncLog). Com ping_oracle=True, testa conf/ Oracle."""
     agora = timezone.now()
     tipos = list(SyncLog.Tipo.values)
     por_tipo: dict[str, Any] = {}
     pior_falhou = False
+    em_andamento = False
     mais_recente: datetime | None = None
     stale = False
 
@@ -488,18 +618,50 @@ def sync_status_payload() -> dict[str, Any]:
         if not log:
             por_tipo[tipo] = None
             continue
+        # RODANDO ou ERRO legado sem fim = sync ainda em execucao
+        unfinished = log.status == SyncLog.Status.RODANDO or (
+            log.status == SyncLog.Status.ERRO and log.fim is None and not (log.erro or "").strip()
+        )
+        if unfinished:
+            em_andamento = True
+            finished = (
+                SyncLog.objects.filter(tipo=tipo)
+                .exclude(pk=log.pk)
+                .exclude(fim__isnull=True, erro="")
+                .order_by("-inicio")
+                .first()
+            )
+            if finished is None:
+                finished = (
+                    SyncLog.objects.filter(tipo=tipo, status=SyncLog.Status.OK)
+                    .order_by("-inicio")
+                    .first()
+                )
+            por_tipo[tipo] = {
+                "tipo": log.tipo,
+                "status": SyncLog.Status.RODANDO,
+                "inicio": log.inicio.isoformat(),
+                "fim": None,
+                "linhas_lidas": log.linhas_lidas,
+                "linhas_gravadas": log.linhas_gravadas,
+                "erro": "",
+                "age_hours": None,
+            }
+            log = finished
+            if not log:
+                continue
         age_h = (agora - (log.fim or log.inicio)).total_seconds() / 3600.0
-        item = {
-            "tipo": log.tipo,
-            "status": log.status,
-            "inicio": log.inicio.isoformat(),
-            "fim": log.fim.isoformat() if log.fim else None,
-            "linhas_lidas": log.linhas_lidas,
-            "linhas_gravadas": log.linhas_gravadas,
-            "erro": log.erro or "",
-            "age_hours": round(age_h, 2),
-        }
-        por_tipo[tipo] = item
+        if por_tipo.get(tipo) is None or por_tipo[tipo].get("status") != SyncLog.Status.RODANDO:
+            por_tipo[tipo] = {
+                "tipo": log.tipo,
+                "status": log.status,
+                "inicio": log.inicio.isoformat(),
+                "fim": log.fim.isoformat() if log.fim else None,
+                "linhas_lidas": log.linhas_lidas,
+                "linhas_gravadas": log.linhas_gravadas,
+                "erro": log.erro or "",
+                "age_hours": round(age_h, 2),
+            }
         ref = log.fim or log.inicio
         if mais_recente is None or ref > mais_recente:
             mais_recente = ref
@@ -512,9 +674,39 @@ def sync_status_payload() -> dict[str, Any]:
     if compras_log and compras_log.get("status") == SyncLog.Status.ERRO:
         pior_falhou = True
 
-    ok = bool(mais_recente) and not pior_falhou and not stale
-    if not mais_recente:
-        detail = "Nenhum sync_globus registrado. Rode python manage.py sync_globus."
+    oracle_ok = False
+    oracle_detail = "conf/ nao verificada."
+    configured = False
+    if ping_oracle:
+        from .globus_oracle import GlobusOracleClient
+
+        try:
+            client = GlobusOracleClient(call_timeout_ms=5000, use_pool=False)
+            configured = client.configured
+            oracle_ok, oracle_detail, _ = client.ping()
+        except Exception as exc:
+            oracle_ok = False
+            oracle_detail = f"Falha ao ler conf/ ou ping Oracle: {exc}"
+            configured = False
+    else:
+        from .globus_conf import load_globus_settings
+
+        settings_g = load_globus_settings()
+        configured = bool(settings_g and settings_g.user and settings_g.dsn)
+
+    ok = bool(mais_recente) and not pior_falhou and not stale and not em_andamento
+    if em_andamento:
+        detail = "Sync Globus em andamento."
+        ok = False
+    elif not mais_recente:
+        if ping_oracle and oracle_ok:
+            detail = "Oracle OK (conf/). Espelho local ainda sem sync_globus."
+        elif ping_oracle and not configured:
+            detail = oracle_detail
+        elif ping_oracle:
+            detail = oracle_detail or "Nenhum sync_globus registrado."
+        else:
+            detail = "Nenhum sync_globus registrado. Rode python manage.py sync_globus."
         ok = False
         stale = True
     elif pior_falhou:
@@ -524,14 +716,19 @@ def sync_status_payload() -> dict[str, Any]:
     else:
         detail = "Espelho Globus atualizado (somente leitura no Oracle via job)."
 
-    return {
+    payload: dict[str, Any] = {
         "ok": ok,
         "detail": detail,
         "readonly": True,
-        "configured": True,
+        "configured": configured,
         "atualizado_em": mais_recente.isoformat() if mais_recente else None,
         "stale": stale or not mais_recente,
         "falhou": pior_falhou,
+        "em_andamento": em_andamento,
         "sync": por_tipo,
-        "source": "synclog",
+        "source": "synclog+conf" if ping_oracle else "synclog",
     }
+    if ping_oracle:
+        payload["oracle_ok"] = oracle_ok
+        payload["oracle_detail"] = oracle_detail
+    return payload

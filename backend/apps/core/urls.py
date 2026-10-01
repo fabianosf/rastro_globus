@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
+    AlertaReincidenciaViewSet,
     DashboardView,
     ExportCsvView,
     FornecedorViewSet,
@@ -23,6 +24,7 @@ from .views import (
     PecaViewSet,
     RankingPecasView,
     RankingVeiculosView,
+    RegraPrazoGarantiaViewSet,
     RelatorioHistoricoView,
     RelatorioResumoView,
     VeiculoViewSet,
@@ -34,6 +36,8 @@ router.register("veiculos", VeiculoViewSet, basename="veiculos")
 router.register("pecas", PecaViewSet, basename="pecas")
 router.register("notas", NotaFiscalViewSet, basename="notas")
 router.register("garantias", GarantiaViewSet, basename="garantias")
+router.register("regras-prazo", RegraPrazoGarantiaViewSet, basename="regras-prazo")
+router.register("alertas-reincidencia", AlertaReincidenciaViewSet, basename="alertas-reincidencia")
 
 urlpatterns = [
     path("auth/login/", LoginView.as_view(), name="auth-login"),

@@ -84,6 +84,19 @@ class Garantia(models.Model):
         CORTESIA = "cortesia", "Cortesia comercial"
         CANCELADA = "cancelada", "Cancelada"
 
+    class CausaImprocedente(models.TextChoices):
+        ERRO_APLICACAO = "erro_aplicacao", "Erro de aplicacao (mecanico/oficina)"
+        ERRO_OPERACAO = "erro_operacao", "Erro de operacao (motorista)"
+        FALHA_SISTEMICA = "falha_sistemica_veiculo", "Falha sistemica do veiculo"
+        OUTRO = "outro", "Outro"
+
+    class ResponsavelTipo(models.TextChoices):
+        OFICINA = "oficina", "Oficina"
+        MECANICO = "mecanico", "Mecanico"
+        MOTORISTA = "motorista", "Motorista"
+        SISTEMA = "sistema", "Sistema"
+        OUTRO = "outro", "Outro"
+
     protocolo = models.CharField(max_length=20, unique=True)
     peca = models.ForeignKey(Peca, on_delete=models.PROTECT)
     veiculo = models.ForeignKey(Veiculo, on_delete=models.PROTECT)
@@ -113,7 +126,36 @@ class Garantia(models.Model):
     laudo_pdf = models.FileField(upload_to="laudos/", blank=True, null=True)
     laudo_resumo = models.TextField(blank=True)
     motivo_improcedente = models.TextField(blank=True)
+    causa_improcedente = models.CharField(
+        max_length=40, choices=CausaImprocedente.choices, blank=True, default=""
+    )
+    responsavel_tipo = models.CharField(
+        max_length=20, choices=ResponsavelTipo.choices, blank=True, default=""
+    )
+    responsavel_nome = models.CharField(max_length=120, blank=True, default="")
+    cobranca_interna = models.BooleanField(default=False)
+    observacao_cobranca = models.TextField(blank=True, default="")
     nf_entrada_globo = models.CharField(max_length=30, blank=True)
+
+    nf_venda_fornecedor = models.CharField(max_length=30, blank=True, default="")
+    nf_venda_data = models.DateField(null=True, blank=True)
+    compra_globus = models.ForeignKey(
+        "CompraGlobus",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="garantias",
+    )
+    data_aplicacao = models.DateField(null=True, blank=True)
+    prazo_garantia_dias = models.PositiveIntegerField(null=True, blank=True)
+    data_fim_garantia = models.DateField(null=True, blank=True)
+    alerta_origem = models.ForeignKey(
+        "AlertaReincidencia",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="garantias",
+    )
 
     criado_por = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="garantias_criadas")
     criado_em = models.DateTimeField(auto_now_add=True)
@@ -255,10 +297,12 @@ class SyncLog(models.Model):
         VEICULOS = "veiculos", "Veiculos"
         FORNECEDORES = "fornecedores", "Fornecedores"
         COMPRAS = "compras", "Compras"
+        SAIDAS = "saidas", "Saidas"
 
     class Status(models.TextChoices):
         OK = "ok", "OK"
         ERRO = "erro", "Erro"
+        RODANDO = "rodando", "Em andamento"
 
     tipo = models.CharField(max_length=20, choices=Tipo.choices)
     inicio = models.DateTimeField()
@@ -274,3 +318,92 @@ class SyncLog(models.Model):
 
     def __str__(self):
         return f"{self.tipo} {self.status} {self.inicio}"
+
+
+class RegraPrazoGarantia(models.Model):
+    class Escopo(models.TextChoices):
+        PECA = "peca", "Peca"
+        GRUPO_PECA = "grupo_peca", "Grupo de peca"
+        FORNECEDOR = "fornecedor", "Fornecedor"
+        TIPO_SERVICO = "tipo_servico", "Tipo de servico"
+
+    class TipoServico(models.TextChoices):
+        INTERNO = "interno", "Interno"
+        EXTERNO = "externo", "Externo"
+
+    escopo = models.CharField(max_length=20, choices=Escopo.choices)
+    valor_escopo = models.CharField(max_length=80)
+    prazo_dias = models.PositiveIntegerField()
+    tipo_servico = models.CharField(
+        max_length=20, choices=TipoServico.choices, default=TipoServico.EXTERNO
+    )
+    ativo = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["escopo", "valor_escopo"]
+        indexes = [models.Index(fields=["escopo", "valor_escopo", "ativo"])]
+
+    def __str__(self):
+        return f"{self.escopo}:{self.valor_escopo}={self.prazo_dias}d"
+
+
+class SaidaGlobus(models.Model):
+    empresa = models.CharField(max_length=80, blank=True)
+    veiculo_codigo = models.CharField(max_length=40, db_index=True)
+    peca_codigo = models.CharField(max_length=40, db_index=True)
+    peca_descricao = models.CharField(max_length=255, blank=True)
+    data_movto = models.DateField(null=True, blank=True, db_index=True)
+    tipo_his = models.CharField(max_length=10, blank=True)
+    numero_nf = models.CharField(max_length=30, blank=True)
+    fornecedor_codigo = models.CharField(max_length=40, blank=True)
+    fornecedor_nome = models.CharField(max_length=200, blank=True)
+    quantidade = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
+    valor_unitario = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
+    chave_unica = models.CharField(max_length=64, unique=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Saida Globus (espelho)"
+        verbose_name_plural = "Saidas Globus (espelho)"
+        ordering = ["-data_movto"]
+        indexes = [models.Index(fields=["veiculo_codigo", "peca_codigo", "data_movto"])]
+
+    def __str__(self):
+        return f"{self.veiculo_codigo}/{self.peca_codigo} {self.data_movto}"
+
+
+class AlertaReincidencia(models.Model):
+    class Status(models.TextChoices):
+        NOVO = "novo", "Novo"
+        EM_ANALISE = "em_analise", "Em analise"
+        GARANTIA_ABERTA = "garantia_aberta", "Garantia aberta"
+        DESCARTADO = "descartado", "Descartado"
+
+    veiculo_codigo = models.CharField(max_length=40, db_index=True)
+    peca_codigo = models.CharField(max_length=40, db_index=True)
+    peca_descricao = models.CharField(max_length=255, blank=True)
+    empresa = models.CharField(max_length=80, blank=True)
+    data_1 = models.DateField()
+    data_2 = models.DateField()
+    dias_entre = models.PositiveIntegerField()
+    fornecedor_1 = models.CharField(max_length=200, blank=True)
+    nf_1 = models.CharField(max_length=30, blank=True)
+    valor_estimado = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOVO)
+    motivo_descarte = models.TextField(blank=True, default="")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-data_2", "-criado_em"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["veiculo_codigo", "peca_codigo", "data_2"],
+                name="uniq_alerta_veiculo_peca_data2",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.veiculo_codigo}/{self.peca_codigo} {self.data_2}"

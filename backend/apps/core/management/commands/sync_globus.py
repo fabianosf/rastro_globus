@@ -39,7 +39,12 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
 
         for log in logs:
-            style = self.style.SUCCESS if log.status == SyncLog.Status.OK else self.style.ERROR
+            if log.status == SyncLog.Status.OK:
+                style = self.style.SUCCESS
+            elif log.status == SyncLog.Status.RODANDO:
+                style = self.style.WARNING
+            else:
+                style = self.style.ERROR
             self.stdout.write(
                 style(
                     f"{log.tipo}: status={log.status} lidas={log.linhas_lidas} "

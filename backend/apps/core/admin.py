@@ -14,6 +14,9 @@ from .models import (
     FornecedorGlobus,
     CompraGlobus,
     SyncLog,
+    RegraPrazoGarantia,
+    SaidaGlobus,
+    AlertaReincidencia,
 )
 
 admin.site.register(Usuario)
@@ -30,3 +33,6 @@ admin.site.register(VeiculoGlobus)
 admin.site.register(FornecedorGlobus)
 admin.site.register(CompraGlobus)
 admin.site.register(SyncLog)
+admin.site.register(RegraPrazoGarantia)
+admin.site.register(SaidaGlobus)
+admin.site.register(AlertaReincidencia)

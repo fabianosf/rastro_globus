@@ -34,3 +34,7 @@ export function canCancel(perfil?: string | null, statusAtual?: string): boolean
   if (!canAdvanceStatus(perfil)) return false;
   return statusAtual === "aberta" || statusAtual === "enviada";
 }
+
+export function canManageRegrasPrazo(perfil?: string | null): boolean {
+  return ["manutencao", "admin"].includes(perfil || "");
+}

@@ -12,8 +12,6 @@ export default function AppLayout({ title }: { title?: string }) {
     ...(canCreateGarantia(user?.perfil)
       ? [{ to: "/garantias/nova", label: "Nova garantia" }]
       : []),
-    { to: "/movimentos-globus", label: "Movimentos Globus" },
-    { to: "/relatorios", label: "Relatórios" },
   ];
 
   return (
@@ -35,14 +33,14 @@ export default function AppLayout({ title }: { title?: string }) {
               to={l.to}
               end={"end" in l ? l.end : undefined}
               className={({ isActive }) =>
-                `rounded-lg px-3 py-2 text-sm transition ${
+                `flex items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
                   isActive
                     ? "bg-cyan/15 text-cyan"
                     : "text-muted hover:bg-line/40 hover:text-text"
                 }`
               }
             >
-              {l.label}
+              <span>{l.label}</span>
             </NavLink>
           ))}
         </nav>

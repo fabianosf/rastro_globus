@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 
 type GlobusStatus = {
   ok: boolean;
   detail: string;
   configured?: boolean;
+  oracle_ok?: boolean;
+  oracle_detail?: string;
   atualizado_em?: string | null;
   stale?: boolean;
   falhou?: boolean;
+  em_andamento?: boolean;
   source?: string;
 };
 
@@ -23,9 +27,14 @@ function formatAtualizado(iso?: string | null) {
 }
 
 export default function GlobusStatusBadge() {
+  const { token } = useAuth();
   const [status, setStatus] = useState<GlobusStatus | null>(null);
 
   useEffect(() => {
+    if (!token) {
+      setStatus(null);
+      return;
+    }
     api<GlobusStatus>("/api/globus/status/")
       .then(setStatus)
       .catch(() =>
@@ -36,28 +45,52 @@ export default function GlobusStatusBadge() {
           stale: true,
         })
       );
-  }, []);
+  }, [token]);
 
   if (!status) {
     return <span className="text-xs text-muted">Globus: verificando…</span>;
   }
 
-  const alerta = Boolean(status.falhou || status.stale || !status.ok);
   const quando = formatAtualizado(status.atualizado_em);
-  const label = quando
-    ? `Dados do Globus atualizados em ${quando}`
-    : "Dados do Globus: sync pendente";
+  const oracleOk = Boolean(status.oracle_ok);
+  const confMissing = status.configured === false;
+  const alerta = Boolean(
+    status.falhou ||
+      confMissing ||
+      status.oracle_ok === false ||
+      (Boolean(quando) && status.stale && !status.em_andamento)
+  );
+  const aviso = Boolean(!alerta && (status.em_andamento || (!quando && oracleOk)));
+
+  let label: string;
+  if (quando && !status.em_andamento) {
+    label = `Dados do Globus atualizados em ${quando}`;
+  } else if (status.em_andamento) {
+    label = quando
+      ? `Sync em andamento (último espelho ${quando})`
+      : "Sync Globus em andamento…";
+  } else if (oracleOk) {
+    label = "Oracle OK (conf/) — espelho ainda sem sync";
+  } else if (confMissing) {
+    label = "conf/ Oracle não configurado";
+  } else {
+    label = status.oracle_detail || status.detail || "Falha na conexão Oracle";
+  }
+
+  const tone = alerta
+    ? "border-red/40 bg-red/10 text-red"
+    : aviso
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-700"
+      : "border-green/40 bg-green/10 text-green";
+  const dot = alerta ? "bg-red" : aviso ? "bg-amber-500" : "bg-green";
+  const title = [status.detail, status.oracle_detail].filter(Boolean).join(" | ");
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${
-        alerta
-          ? "border-red/40 bg-red/10 text-red"
-          : "border-green/40 bg-green/10 text-green"
-      }`}
-      title={status.detail}
+      className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${tone}`}
+      title={title}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${alerta ? "bg-red" : "bg-green"}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
       {label}
     </span>
   );
@@ -84,8 +117,10 @@ export type GlobusPeca = {
 
 export type GlobusVeiculo = {
   codigo: string;
+  prefixo?: string;
   placa?: string;
   descricao?: string;
+  codigo_veic_globus?: string;
 };
 
 export async function buscarNfGlobus(numero: string): Promise<GlobusNf[]> {

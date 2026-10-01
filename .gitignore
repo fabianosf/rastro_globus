@@ -2,6 +2,13 @@
 conf/
 **/conf/chave.key
 **/conf/*.dat
+logs/
+docs/ops/incoming/*.xlsx
+docs/ops/incoming/*.xls
+!docs/ops/incoming/.gitkeep
+!docs/ops/incoming/README.md
+GARANTIA*.xlsx
+/GARANTIA 2026.xlsx
 
 # Backend
 backend/.venv/

@@ -90,13 +90,37 @@ def mudar_status(garantia, novo_status, usuario, descricao, **extras):
 
     if novo_status == Garantia.Status.IMPROCEDENTE:
         motivo = (extras.get("motivo_improcedente") or garantia.motivo_improcedente or "").strip()
+        causa = (extras.get("causa_improcedente") or garantia.causa_improcedente or "").strip()
+        resp_tipo = (extras.get("responsavel_tipo") or garantia.responsavel_tipo or "").strip()
+        resp_nome = (extras.get("responsavel_nome") or garantia.responsavel_nome or "").strip()
         tem_laudo = bool(garantia.laudo_resumo or garantia.laudo_pdf)
-        if not tem_laudo or not motivo:
+        causas_ok = {c.value for c in Garantia.CausaImprocedente}
+        tipos_ok = {t.value for t in Garantia.ResponsavelTipo}
+        if not tem_laudo:
+            raise ValidationError("Improcedente exige laudo (resumo ou PDF).")
+        if not causa or causa not in causas_ok:
             raise ValidationError(
-                "Improcedente exige laudo (resumo ou PDF) e motivo."
+                "Improcedente exige causa_improcedente "
+                "(erro_aplicacao, erro_operacao, falha_sistemica_veiculo, outro)."
             )
+        if not resp_tipo or resp_tipo not in tipos_ok:
+            raise ValidationError(
+                "Improcedente exige responsavel_tipo "
+                "(oficina, mecanico, motorista, sistema, outro)."
+            )
+        if resp_tipo != Garantia.ResponsavelTipo.SISTEMA and not resp_nome:
+            raise ValidationError("Informe responsavel_nome (exceto quando tipo=sistema).")
+        if not motivo:
+            motivo = causa
         garantia.motivo_improcedente = motivo
-        # Improcedente NUNCA grava lógica de estoque / nf_entrada_globo
+        garantia.causa_improcedente = causa
+        garantia.responsavel_tipo = resp_tipo
+        garantia.responsavel_nome = resp_nome
+        if "cobranca_interna" in extras:
+            garantia.cobranca_interna = bool(extras.get("cobranca_interna"))
+        if extras.get("observacao_cobranca") is not None:
+            garantia.observacao_cobranca = str(extras.get("observacao_cobranca") or "")
+        # Improcedente NUNCA grava logica de estoque / nf_entrada_globo
         garantia.nf_entrada_globo = ""
 
     if novo_status == Garantia.Status.CORTESIA:

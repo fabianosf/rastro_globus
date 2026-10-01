@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -36,6 +36,17 @@ type Garantia = {
   observacoes: string;
   laudo_resumo: string;
   motivo_improcedente: string;
+  causa_improcedente?: string;
+  responsavel_tipo?: string;
+  responsavel_nome?: string;
+  cobranca_interna?: boolean;
+  observacao_cobranca?: string;
+  nf_venda_fornecedor?: string;
+  nf_venda_data?: string;
+  data_aplicacao?: string;
+  prazo_garantia_dias?: number | null;
+  data_fim_garantia?: string | null;
+  dias_garantia_restantes?: number | null;
   dias_aberta: number;
   eventos: Evento[];
   anexos: Array<{ id: number; descricao: string; arquivo: string; enviado_em: string }>;
@@ -57,6 +68,11 @@ export default function GarantiaFicha() {
   const [nfData, setNfData] = useState(new Date().toISOString().slice(0, 10));
   const [descricao, setDescricao] = useState("");
   const [motivo, setMotivo] = useState("");
+  const [causa, setCausa] = useState("erro_aplicacao");
+  const [respTipo, setRespTipo] = useState("oficina");
+  const [respNome, setRespNome] = useState("");
+  const [cobrancaInterna, setCobrancaInterna] = useState(true);
+  const [obsCobranca, setObsCobranca] = useState("");
   const [nfGlobo, setNfGlobo] = useState("");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [buscandoNf, setBuscandoNf] = useState<"remessa" | "retorno" | "globo" | null>(null);
@@ -209,6 +225,11 @@ export default function GarantiaFicha() {
           status,
           descricao,
           motivo_improcedente: motivo,
+          causa_improcedente: status === "improcedente" ? causa : "",
+          responsavel_tipo: status === "improcedente" ? respTipo : "",
+          responsavel_nome: status === "improcedente" ? respNome : "",
+          cobranca_interna: status === "improcedente" ? cobrancaInterna : false,
+          observacao_cobranca: status === "improcedente" ? obsCobranca : "",
           nf_entrada_globo: status === "procedente" ? nfGlobo : "",
         },
       });
@@ -264,9 +285,6 @@ export default function GarantiaFicha() {
   if (!g) return <p className="text-red">{error || "Garantia não encontrada."}</p>;
 
   const showEstoqueWarning = g.status !== "procedente";
-  const movimentosHref = `/movimentos-globus?peca=${encodeURIComponent(pecaCodigo)}&veiculo=${encodeURIComponent(
-    g.veiculo_codigo || ""
-  )}`;
 
   return (
     <div className="space-y-6">
@@ -276,14 +294,6 @@ export default function GarantiaFicha() {
           <p className="text-sm text-muted">
             {g.peca_nome} · veículo {g.veiculo_codigo} · {g.fornecedor_nome}
           </p>
-          {pecaCodigo ? (
-            <Link
-              to={movimentosHref}
-              className="mt-2 inline-flex text-sm text-cyan hover:underline"
-            >
-              Ver movimentos desta peça no Globus
-            </Link>
-          ) : null}
         </div>
         <BadgeStatus status={g.status} />
       </div>
@@ -325,11 +335,42 @@ export default function GarantiaFicha() {
             <span className="text-muted">Dias aberta:</span> {g.dias_aberta}
           </p>
           <p>
+            <span className="text-muted">NF venda fornecedor:</span>{" "}
+            {g.nf_venda_fornecedor || "—"}
+            {g.nf_venda_data ? ` · ${String(g.nf_venda_data).slice(0, 10)}` : ""}
+          </p>
+          <p>
+            <span className="text-muted">Aplicacao / prazo:</span>{" "}
+            {g.data_aplicacao ? String(g.data_aplicacao).slice(0, 10) : "—"} ·{" "}
+            {g.prazo_garantia_dias != null ? `${g.prazo_garantia_dias} dias` : "—"}
+          </p>
+          <p>
+            <span className="text-muted">Fim garantia:</span>{" "}
+            {g.data_fim_garantia ? String(g.data_fim_garantia).slice(0, 10) : "—"}
+            {g.dias_garantia_restantes != null ? (
+              <span className={g.dias_garantia_restantes < 0 ? " text-red" : " text-cyan"}>
+                {" "}
+                (
+                {g.dias_garantia_restantes < 0
+                  ? "vencida"
+                  : `vence em ${g.dias_garantia_restantes} dias`}
+                )
+              </span>
+            ) : null}
+          </p>
+          <p>
             <span className="text-muted">Observações:</span> {g.observacoes || "—"}
           </p>
           <p>
             <span className="text-muted">Laudo:</span> {g.laudo_resumo || "—"}
           </p>
+          {g.causa_improcedente ? (
+            <p>
+              <span className="text-muted">Causa improcedente:</span> {g.causa_improcedente}
+              {g.responsavel_tipo ? ` · ${g.responsavel_tipo}` : ""}
+              {g.responsavel_nome ? ` (${g.responsavel_nome})` : ""}
+            </p>
+          ) : null}
           {g.motivo_improcedente ? (
             <p>
               <span className="text-muted">Motivo improcedente:</span> {g.motivo_improcedente}
@@ -608,15 +649,63 @@ export default function GarantiaFicha() {
                   </button>
                 </div>
               </div>
-              <div>
-                <label className="mb-1 block text-xs text-muted">
-                  Motivo improcedente (obrigatório com laudo)
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs">
+                  <span className="mb-1 block text-muted">Causa improcedente *</span>
+                  <select className={field} value={causa} onChange={(e) => setCausa(e.target.value)}>
+                    <option value="erro_aplicacao">Erro aplicacao (oficina)</option>
+                    <option value="erro_operacao">Erro operacao (motorista)</option>
+                    <option value="falha_sistemica_veiculo">Falha sistemica veiculo</option>
+                    <option value="outro">Outro</option>
+                  </select>
                 </label>
-                <input
-                  className={field}
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                />
+                <label className="text-xs">
+                  <span className="mb-1 block text-muted">Responsavel tipo *</span>
+                  <select
+                    className={field}
+                    value={respTipo}
+                    onChange={(e) => setRespTipo(e.target.value)}
+                  >
+                    <option value="oficina">Oficina</option>
+                    <option value="mecanico">Mecanico</option>
+                    <option value="motorista">Motorista</option>
+                    <option value="sistema">Sistema</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </label>
+                <label className="text-xs sm:col-span-2">
+                  <span className="mb-1 block text-muted">Responsavel nome</span>
+                  <input
+                    className={field}
+                    value={respNome}
+                    onChange={(e) => setRespNome(e.target.value)}
+                    placeholder="Obrigatorio exceto tipo=sistema"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={cobrancaInterna}
+                    onChange={(e) => setCobrancaInterna(e.target.checked)}
+                  />
+                  Cobranca interna
+                </label>
+                <label className="text-xs sm:col-span-2">
+                  <span className="mb-1 block text-muted">Obs. cobranca</span>
+                  <input
+                    className={field}
+                    value={obsCobranca}
+                    onChange={(e) => setObsCobranca(e.target.value)}
+                  />
+                </label>
+                <label className="text-xs sm:col-span-2">
+                  <span className="mb-1 block text-muted">Motivo / detalhe</span>
+                  <input
+                    className={field}
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                  />
+                </label>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button

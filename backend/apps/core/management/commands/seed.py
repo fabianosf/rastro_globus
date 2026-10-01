@@ -240,6 +240,10 @@ class Command(BaseCommand):
             )
             EventoGarantia.objects.filter(pk=ev.pk).update(data=criado + timedelta(days=i * 5))
 
+        from apps.core.prazo_garantia import ensure_regra_padrao_externo
+
+        ensure_regra_padrao_externo()
+
         self.stdout.write(self.style.SUCCESS("Seed concluído."))
         self.stdout.write(
             "Usuários: admin/admin123 | manutencao/manut123 | oficina/oficina123 | "
@@ -249,3 +253,4 @@ class Command(BaseCommand):
             f"Garantias: {Garantia.objects.count()} "
             f"(exemplo Globus: GAR-2026-0131 / peça 01111011)"
         )
+        self.stdout.write("RegraPrazoGarantia padrao: tipo_servico=externo -> 180 dias")

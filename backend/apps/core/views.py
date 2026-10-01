@@ -15,12 +15,14 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
+    AlertaReincidencia,
     Anexo,
     Fornecedor,
     Garantia,
     HistoricoGarantiaMensal,
     NotaFiscal,
     Peca,
+    RegraPrazoGarantia,
     Usuario,
     Veiculo,
 )
@@ -33,7 +35,14 @@ from .permissions import (
     CanVincularNota,
     IsNotDirecaoWrite,
 )
+from .prazo_garantia import (
+    calcular_data_fim_garantia,
+    ensure_regra_padrao_externo,
+    resolver_prazo_dias,
+)
+from .reincidencia import contagem_alertas_novos
 from .serializers import (
+    AlertaReincidenciaSerializer,
     AnexoSerializer,
     FornecedorSerializer,
     GarantiaCreateSerializer,
@@ -41,12 +50,13 @@ from .serializers import (
     GarantiaListSerializer,
     NotaFiscalSerializer,
     PecaSerializer,
+    RegraPrazoGarantiaSerializer,
     StatusChangeSerializer,
     UsuarioSerializer,
     VeiculoSerializer,
     VincularNotaSerializer,
 )
-from .services import mudar_status
+from .services import mudar_status, proximo_protocolo
 
 
 class LoginView(APIView):
@@ -233,6 +243,149 @@ class NotaFiscalViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "head", "options"]
 
 
+class RegraPrazoGarantiaViewSet(viewsets.ModelViewSet):
+    queryset = RegraPrazoGarantia.objects.all().order_by("escopo", "valor_escopo")
+    serializer_class = RegraPrazoGarantiaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            perfil = getattr(request.user, "perfil", None)
+            if perfil not in {"admin", "manutencao"}:
+                from rest_framework.exceptions import PermissionDenied
+
+                raise PermissionDenied("Somente admin/manutencao gerenciam regras de prazo.")
+
+    def list(self, request, *args, **kwargs):
+        ensure_regra_padrao_externo()
+        return super().list(request, *args, **kwargs)
+
+
+class AlertaReincidenciaViewSet(viewsets.ModelViewSet):
+    queryset = AlertaReincidencia.objects.all()
+    serializer_class = AlertaReincidenciaSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        qs = AlertaReincidencia.objects.all()
+        status_f = (self.request.query_params.get("status") or "").strip()
+        peca = (self.request.query_params.get("peca") or "").strip()
+        fornecedor = (self.request.query_params.get("fornecedor") or "").strip()
+        empresa = (self.request.query_params.get("empresa") or "").strip()
+        if status_f:
+            qs = qs.filter(status=status_f)
+        if peca:
+            qs = qs.filter(Q(peca_codigo__icontains=peca) | Q(peca_descricao__icontains=peca))
+        if fornecedor:
+            qs = qs.filter(fornecedor_1__icontains=fornecedor)
+        if empresa:
+            qs = qs.filter(empresa__icontains=empresa)
+        return qs
+
+    @action(detail=False, methods=["get"], url_path="novos-count")
+    def novos_count(self, request):
+        return Response({"count": contagem_alertas_novos()})
+
+    @action(detail=True, methods=["post"], url_path="descartar")
+    def descartar(self, request, pk=None):
+        alerta = self.get_object()
+        motivo = str(request.data.get("motivo_descarte") or "").strip()
+        if not motivo:
+            return Response(
+                {"detail": "Informe motivo_descarte."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        alerta.status = AlertaReincidencia.Status.DESCARTADO
+        alerta.motivo_descarte = motivo
+        alerta.save(update_fields=["status", "motivo_descarte", "atualizado_em"])
+        return Response(AlertaReincidenciaSerializer(alerta).data)
+
+    @action(detail=True, methods=["post"], url_path="abrir-garantia")
+    def abrir_garantia(self, request, pk=None):
+        alerta = self.get_object()
+        if alerta.status == AlertaReincidencia.Status.DESCARTADO:
+            return Response(
+                {"detail": "Alerta descartado nao pode abrir garantia."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not CanCreateGarantia().has_permission(request, self):
+            return Response(
+                {"detail": "Seu perfil nao pode criar garantias."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        peca, _ = Peca.objects.get_or_create(
+            codigo_interno=alerta.peca_codigo,
+            defaults={
+                "descricao": (alerta.peca_descricao or alerta.peca_codigo)[:255],
+                "garantia_dias": 180,
+                "ativo": True,
+            },
+        )
+        veiculo, _ = Veiculo.objects.get_or_create(
+            codigo=alerta.veiculo_codigo,
+            defaults={"casa": alerta.empresa or "", "ativo": True},
+        )
+        forn_nome = (alerta.fornecedor_1 or "Fornecedor reincidencia").strip()
+        forn = Fornecedor.objects.filter(
+            Q(nome_fantasia__iexact=forn_nome) | Q(razao_social__iexact=forn_nome)
+        ).first()
+        if not forn:
+            digest = hashlib.sha1(forn_nome.encode("utf-8")).hexdigest()[:12]
+            forn = Fornecedor.objects.create(
+                razao_social=forn_nome,
+                nome_fantasia=forn_nome,
+                cnpj=f"AR-{digest}"[:18],
+                origem="alerta",
+            )
+
+        ensure_regra_padrao_externo()
+        data_aplicacao = alerta.data_2
+        prazo = resolver_prazo_dias(peca=peca, fornecedor=forn)
+        garantia = Garantia.objects.create(
+            protocolo=proximo_protocolo(),
+            peca=peca,
+            veiculo=veiculo,
+            fornecedor=forn,
+            status=Garantia.Status.ABERTA,
+            nf_venda_fornecedor=alerta.nf_1 or "SEM-NF",
+            nf_venda_data=alerta.data_1,
+            data_aplicacao=data_aplicacao,
+            prazo_garantia_dias=prazo,
+            data_fim_garantia=calcular_data_fim_garantia(data_aplicacao, prazo),
+            valor_peca=alerta.valor_estimado,
+            alerta_origem=alerta,
+            criado_por=request.user,
+            observacoes=(
+                f"Aberta a partir de alerta de reincidencia "
+                f"(saidas {alerta.data_1} e {alerta.data_2}, {alerta.dias_entre} dias)."
+            ),
+            laudo_resumo="Laudo pendente — origem alerta de reincidencia.",
+        )
+        from .models import EventoGarantia
+
+        EventoGarantia.objects.create(
+            garantia=garantia,
+            usuario=request.user,
+            status_anterior="",
+            status_novo=Garantia.Status.ABERTA,
+            descricao="Garantia aberta a partir de AlertaReincidencia.",
+        )
+        alerta.status = AlertaReincidencia.Status.GARANTIA_ABERTA
+        alerta.save(update_fields=["status", "atualizado_em"])
+        return Response(
+            GarantiaDetailSerializer(garantia, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class GarantiaViewSet(viewsets.ModelViewSet):
     queryset = Garantia.objects.select_related(
         "peca", "veiculo", "fornecedor", "nota_remessa", "nota_retorno", "nota_compra", "criado_por"
@@ -332,7 +485,7 @@ class GarantiaViewSet(viewsets.ModelViewSet):
 
         from .globus_sync import compras_por_codigos_local, sync_status_payload
 
-        status_sync = sync_status_payload()
+        status_sync = sync_status_payload(ping_oracle=False)
         globus_ok = bool(status_sync.get("ok"))
         globus_detail = status_sync.get("detail") or ""
         compras_map: dict = {}
@@ -403,6 +556,11 @@ class GarantiaViewSet(viewsets.ModelViewSet):
                 request.user,
                 data.get("descricao", ""),
                 motivo_improcedente=data.get("motivo_improcedente", ""),
+                causa_improcedente=data.get("causa_improcedente", ""),
+                responsavel_tipo=data.get("responsavel_tipo", ""),
+                responsavel_nome=data.get("responsavel_nome", ""),
+                cobranca_interna=data.get("cobranca_interna", False),
+                observacao_cobranca=data.get("observacao_cobranca", ""),
                 nf_entrada_globo=data.get("nf_entrada_globo", ""),
             )
         except DjangoValidationError as exc:
@@ -509,6 +667,64 @@ def _dashboard_payload(ano):
         )[:20]
     )
 
+    improcedentes = qs.filter(status=Garantia.Status.IMPROCEDENTE)
+    custo_por_causa = [
+        {
+            "causa": r["causa_improcedente"] or "nao_informada",
+            "total": r["total"],
+            "valor": str(r["valor"] or 0),
+        }
+        for r in improcedentes.values("causa_improcedente")
+        .annotate(total=Count("id"), valor=Sum("valor_peca"))
+        .order_by("-valor")
+    ]
+    custo_por_responsavel = [
+        {
+            "responsavel_tipo": r["responsavel_tipo"] or "nao_informado",
+            "total": r["total"],
+            "valor": str(r["valor"] or 0),
+        }
+        for r in improcedentes.values("responsavel_tipo")
+        .annotate(total=Count("id"), valor=Sum("valor_peca"))
+        .order_by("-valor")
+    ]
+    custo_por_veiculo = [
+        {
+            "veiculo": r["veiculo__codigo"],
+            "total": r["total"],
+            "valor": str(r["valor"] or 0),
+        }
+        for r in improcedentes.values("veiculo__codigo")
+        .annotate(total=Count("id"), valor=Sum("valor_peca"))
+        .order_by("-valor")[:10]
+    ]
+    top_pecas_improcedentes = [
+        {
+            "codigo": r["peca__codigo_interno"],
+            "descricao": r["peca__descricao"],
+            "causa": r["causa_improcedente"] or "nao_informada",
+            "total": r["total"],
+            "valor": str(r["valor"] or 0),
+        }
+        for r in improcedentes.values(
+            "peca__codigo_interno", "peca__descricao", "causa_improcedente"
+        )
+        .annotate(total=Count("id"), valor=Sum("valor_peca"))
+        .order_by("-total")[:10]
+    ]
+    valor_recuperado = qs.filter(
+        status=Garantia.Status.PROCEDENTE, alerta_origem__isnull=False
+    ).aggregate(t=Sum("valor_peca"))["t"] or Decimal("0")
+
+    agora = timezone.now()
+    alertas_qs = AlertaReincidencia.objects.filter(
+        status=AlertaReincidencia.Status.NOVO,
+        criado_em__year=ano,
+    )
+    if ano == agora.year:
+        alertas_qs = alertas_qs.filter(criado_em__month=agora.month)
+    alertas_novos_mes = alertas_qs.count()
+
     return {
         "ano": ano,
         "contagem_status": contagem,
@@ -546,6 +762,13 @@ def _dashboard_payload(ano):
             }
             for p in parados
         ],
+        "custo_improcedente_por_causa": custo_por_causa,
+        "custo_improcedente_por_responsavel": custo_por_responsavel,
+        "custo_improcedente_por_veiculo": custo_por_veiculo,
+        "top_pecas_improcedentes": top_pecas_improcedentes,
+        "valor_recuperado_alertas": str(valor_recuperado),
+        "alertas_novos_mes": alertas_novos_mes,
+        "alertas_novos_total": contagem_alertas_novos(),
     }
 
 
@@ -834,12 +1057,8 @@ class GlobusStatusView(APIView):
     def get(self, request):
         from .globus_sync import sync_status_payload
 
-        payload = sync_status_payload()
-        ok = bool(payload.get("ok"))
-        return Response(
-            payload,
-            status=status.HTTP_200_OK if ok else status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+        # Sempre 200: ok/stale/falhou vão no body (badge UI). 503 só polui o console.
+        return Response(sync_status_payload(), status=status.HTTP_200_OK)
 
 
 class GlobusNfView(APIView):
@@ -1042,7 +1261,7 @@ class ImprocedentesComprasView(APIView):
         garantias = list(qs[:200])
         codigos = [g.peca.codigo_interno for g in garantias if g.peca_id]
 
-        status_sync = sync_status_payload()
+        status_sync = sync_status_payload(ping_oracle=False)
         globus_ok = bool(status_sync.get("ok"))
         globus_detail = status_sync.get("detail") or ""
         compras_map = compras_por_codigos_local(
@@ -1139,11 +1358,14 @@ class GlobusLocalVeiculosView(APIView):
         ).order_by("prefixo")[:30]
         rows = [
             {
-                "codigo": v.prefixo or v.codigo_veic_globus,
+                # codigo = chave Globus para ensure no RG; prefixo e exibicao
+                "codigo": v.codigo_veic_globus or v.prefixo,
+                "prefixo": v.prefixo,
                 "placa": v.placa,
                 "codigo_veic_globus": v.codigo_veic_globus,
                 "codigo_empresa": v.codigo_empresa,
                 "condicao": v.condicao,
+                "descricao": v.prefixo or v.codigo_veic_globus,
             }
             for v in qs
         ]

@@ -11,7 +11,7 @@ import re
 from contextlib import contextmanager
 from typing import Any, Iterable
 
-from .globus_conf import GlobusSettings, load_globus_settings
+from .globus_conf import GlobusSettings, load_globus_settings, resolve_oracle_client_lib_dir
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +55,31 @@ def _ensure_thick_mode(lib_dir: str | None = None) -> tuple[bool, str]:
     if env_lib:
         candidates.append(env_lib)
 
+    # Preferencias da pasta conf/ (oracle_client_dir.txt / erp.dat / pastas locais)
+    conf_lib = resolve_oracle_client_lib_dir()
+    if conf_lib:
+        candidates.append(conf_lib)
+
+    # Instant Client padrao de maquina (sem caminho pessoal no codigo)
+    for folder in (
+        r"C:\oracle\instantclient_21_14",
+        r"C:\oracle\instantclient_23_5",
+        r"C:\oracle\instantclient",
+        r"C:\oracle\BIN",
+        r"C:\oracle",
+    ):
+        candidates.append(folder)
+
+    seen: set[str] = set()
     errors: list[str] = []
     for folder in candidates:
-        if not folder or not os.path.isdir(folder):
-            if folder:
-                errors.append(f"{folder}: nao encontrado")
+        if not folder:
+            continue
+        key = folder.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if not os.path.isdir(folder):
             continue
         try:
             oracledb.init_oracle_client(lib_dir=folder)
@@ -87,7 +107,8 @@ def _ensure_thick_mode(lib_dir: str | None = None) -> tuple[bool, str]:
         errors.append(f"PATH: {exc}")
 
     _THICK_ERROR = " | ".join(errors) if errors else (
-        "Instant Client nao encontrado. Defina ORACLE_CLIENT_LIB_DIR ou PATH."
+        "Instant Client nao encontrado. Coloque o caminho em conf/oracle_client_dir.txt "
+        "ou defina ORACLE_CLIENT_LIB_DIR."
     )
     return False, _THICK_ERROR
 
@@ -174,7 +195,8 @@ class GlobusOracleClient:
             )
         import oracledb
 
-        ok_thick, thick_msg = _ensure_thick_mode()
+        lib_dir = (self.settings.oracle_client_lib_dir or "").strip() or None
+        ok_thick, thick_msg = _ensure_thick_mode(lib_dir)
         if ok_thick:
             logger.info("Oracle Globus: %s", thick_msg)
         else:

@@ -90,6 +90,12 @@ export async function api<T = unknown>(path: string, options: RequestOptions = {
   const data = contentType.includes("application/json") ? await res.json() : await res.text();
 
   if (!res.ok) {
+    if (res.status === 401 && auth) {
+      clearSession();
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.assign("/login");
+      }
+    }
     const detail =
       typeof data === "object" && data && "detail" in data
         ? String((data as { detail: unknown }).detail)

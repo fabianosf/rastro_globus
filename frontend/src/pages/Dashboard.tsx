@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, getToken } from "../api/client";
 import BadgeStatus from "../components/BadgeStatus";
 import GlobusStatusBadge from "../components/GlobusStatusBadge";
 import KpiCard from "../components/KpiCard";
@@ -62,6 +62,23 @@ type DashboardData = {
     peca: string;
     veiculo: string;
   }>;
+  custo_improcedente_por_causa?: Array<{ causa: string; total: number; valor: string }>;
+  custo_improcedente_por_responsavel?: Array<{
+    responsavel_tipo: string;
+    total: number;
+    valor: string;
+  }>;
+  custo_improcedente_por_veiculo?: Array<{ veiculo: string; total: number; valor: string }>;
+  top_pecas_improcedentes?: Array<{
+    codigo: string;
+    descricao: string;
+    causa: string;
+    total: number;
+    valor: string;
+  }>;
+  valor_recuperado_alertas?: string;
+  alertas_novos_mes?: number;
+  alertas_novos_total?: number;
   globus?: {
     ok: boolean;
     detail: string;
@@ -95,7 +112,40 @@ type HistoricoData = {
   merge_app_from?: string;
 };
 
-type Tab = "vivo" | "historico";
+type Tab = "vivo" | "historico" | "relatorios";
+
+type CompraGlobus = {
+  numero_nf?: string;
+  serie_nf?: string;
+  data_entrada_nf?: string;
+  data_emissao_nf?: string;
+  valor_unitario?: string | number;
+  valor_total_nf?: string | number;
+  fornecedor_nome?: string;
+  peca_codigo?: string;
+};
+
+type ImprocedenteRow = {
+  id: number;
+  protocolo: string;
+  peca_codigo: string;
+  peca_nome: string;
+  veiculo_codigo: string;
+  fornecedor_nome: string;
+  valor_peca: string | null;
+  motivo_improcedente: string;
+  nf_compra_rg: string;
+  ultima_compra_globus: CompraGlobus | null;
+};
+
+type ImprocedentesPayload = {
+  ano: number;
+  count: number;
+  results: ImprocedenteRow[];
+  globus_ok: boolean;
+  globus_detail: string;
+  aviso: string;
+};
 
 function money(v: string | number | undefined) {
   if (v === undefined || v === null || v === "") return "—";
@@ -129,6 +179,11 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("vivo");
   const [anoVivo] = useState(currentYear);
   const [anoHist, setAnoHist] = useState(currentYear);
+  const [anoRel, setAnoRel] = useState(String(currentYear));
+  const [pecaFiltro, setPecaFiltro] = useState("");
+  const [cruzamento, setCruzamento] = useState<ImprocedentesPayload | null>(null);
+  const [cruzLoading, setCruzLoading] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [data, setData] = useState<DashboardData | null>(null);
   const [hist, setHist] = useState<HistoricoData | null>(null);
   const [error, setError] = useState("");
@@ -154,6 +209,46 @@ export default function Dashboard() {
       .catch((e) => setHistError(e instanceof ApiError ? e.message : "Erro ao carregar historico."))
       .finally(() => setHistLoading(false));
   }, [tab, anoHist]);
+
+  useEffect(() => {
+    if (tab !== "relatorios") return;
+    setCruzLoading(true);
+    const q = new URLSearchParams({ ano: anoRel });
+    if (pecaFiltro.trim()) q.set("peca", pecaFiltro.trim());
+    api<ImprocedentesPayload>(`/api/relatorios/improcedentes-compras/?${q}`)
+      .then(setCruzamento)
+      .catch(() =>
+        setCruzamento({
+          ano: Number(anoRel),
+          count: 0,
+          results: [],
+          globus_ok: false,
+          globus_detail: "Falha ao carregar cruzamento.",
+          aviso: "",
+        })
+      )
+      .finally(() => setCruzLoading(false));
+  }, [tab, anoRel, pecaFiltro]);
+
+  async function exportCsv() {
+    setExportError("");
+    try {
+      const token = getToken();
+      const res = await fetch(`/api/relatorios/export.csv/?ano=${anoRel}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Falha no export.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `garantias-${anoRel}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError("Nao foi possivel baixar o CSV.");
+    }
+  }
 
   const mesChart = useMemo(
     () =>
@@ -223,6 +318,15 @@ export default function Dashboard() {
         >
           Historico (planilha)
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("relatorios")}
+          className={`rounded-md px-3 py-1.5 text-sm ${
+            tab === "relatorios" ? "bg-cyan/20 text-cyan" : "text-muted hover:text-ink"
+          }`}
+        >
+          Relatorios
+        </button>
       </div>
 
       {tab === "vivo" ? (
@@ -233,6 +337,120 @@ export default function Dashboard() {
         ) : data ? (
           <DashboardVivo data={data} />
         ) : null
+      ) : tab === "relatorios" ? (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-muted">Ano</label>
+              <input
+                className="w-28 rounded-lg border border-line bg-panel px-3 py-2 text-sm"
+                value={anoRel}
+                onChange={(e) => setAnoRel(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="rounded-lg bg-cyan px-4 py-2 text-sm font-semibold text-bg"
+            >
+              Exportar CSV
+            </button>
+          </div>
+          {exportError ? <p className="text-red">{exportError}</p> : null}
+
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">Improcedentes x compras Globus</h2>
+                <p className="text-xs text-muted">
+                  Improcedente vem do RastroGlobus. Compras vêm do espelho Globus (leitura).
+                </p>
+              </div>
+              <input
+                className="w-56 rounded-lg border border-line bg-panel px-3 py-2 text-sm"
+                placeholder="Filtrar peca..."
+                value={pecaFiltro}
+                onChange={(e) => setPecaFiltro(e.target.value)}
+              />
+            </div>
+            <div className="rounded-lg border border-amber/40 bg-amber/10 px-4 py-3 text-sm text-amber">
+              {cruzamento?.aviso ||
+                "Consulta somente leitura. Improcedente nao e status do estoque Globus."}
+              {cruzamento && !cruzamento.globus_ok ? (
+                <span className="mt-1 block text-xs">
+                  Globus: {cruzamento.globus_detail || "compras indisponiveis"}
+                </span>
+              ) : null}
+            </div>
+            {cruzLoading ? <p className="text-sm text-muted">Carregando cruzamento...</p> : null}
+            <div className="overflow-x-auto rounded-xl border border-line bg-panel">
+              <table className="w-full min-w-[900px] text-left text-sm">
+                <thead className="border-b border-line text-muted">
+                  <tr>
+                    <th className="px-3 py-3 font-medium">Protocolo</th>
+                    <th className="px-3 py-3 font-medium">Peca</th>
+                    <th className="px-3 py-3 font-medium">Veiculo</th>
+                    <th className="px-3 py-3 font-medium">Motivo</th>
+                    <th className="px-3 py-3 font-medium">NF compra Globus</th>
+                    <th className="px-3 py-3 font-medium">Data</th>
+                    <th className="px-3 py-3 font-medium">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(cruzamento?.results || []).map((r) => {
+                    const c = r.ultima_compra_globus;
+                    const dataNf = c?.data_entrada_nf || c?.data_emissao_nf;
+                    return (
+                      <tr key={r.id} className="border-t border-line">
+                        <td className="px-3 py-2">
+                          <Link className="text-cyan hover:underline" to={`/garantias/${r.id}`}>
+                            {r.protocolo}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div>{r.peca_nome}</div>
+                          <div className="text-xs text-muted">{r.fornecedor_nome}</div>
+                        </td>
+                        <td className="px-3 py-2">{r.veiculo_codigo}</td>
+                        <td className="px-3 py-2 max-w-[200px] text-xs text-muted">
+                          {r.motivo_improcedente || "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          {c?.numero_nf ? (
+                            <div>
+                              <div>
+                                {c.numero_nf}
+                                {c.serie_nf ? ` / ${c.serie_nf}` : ""}
+                              </div>
+                              <div className="text-xs text-muted">{c.fornecedor_nome || ""}</div>
+                            </div>
+                          ) : (
+                            <span className="text-muted">
+                              {cruzamento?.globus_ok ? "Sem compra no periodo" : "—"}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {dataNf ? String(dataNf).slice(0, 10) : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          {money(c?.valor_unitario ?? c?.valor_total_nf ?? r.valor_peca ?? undefined)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!cruzLoading && !(cruzamento?.results || []).length ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-6 text-center text-muted">
+                        Nenhuma garantia improcedente no ano {anoRel}.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       ) : (
         <div className="space-y-6">
           <div className="flex flex-wrap items-end gap-4">
@@ -366,14 +584,9 @@ function DashboardVivo({ data }: { data: DashboardData }) {
       </div>
 
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="font-semibold">Globus ao vivo</h2>
-            <p className="text-xs text-muted">{g?.aviso || "Compras e movimentos recentes (leitura)."}</p>
-          </div>
-          <Link to="/movimentos-globus" className="text-sm text-cyan hover:underline">
-            Ver movimentos
-          </Link>
+        <div>
+          <h2 className="font-semibold">Globus ao vivo</h2>
+          <p className="text-xs text-muted">{g?.aviso || "Compras e movimentos recentes (leitura)."}</p>
         </div>
 
         {!g?.ok ? (
@@ -488,10 +701,79 @@ function DashboardVivo({ data }: { data: DashboardData }) {
         <KpiCard title="Canceladas" value={c.cancelada || 0} accent="amber" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Valor procedente" value={money(data.valor_procedente)} accent="green" />
         <KpiCard title="Valor improcedente" value={money(data.valor_improcedente)} accent="red" />
         <KpiCard title="Valor em aberto" value={money(data.valor_aberto)} accent="amber" />
+        <KpiCard
+          title="Valor recuperado (alertas)"
+          value={money(data.valor_recuperado_alertas)}
+          accent="green"
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <KpiCard
+          title="Alertas novos no mes"
+          value={data.alertas_novos_mes ?? 0}
+          accent="amber"
+        />
+        <div className="flex items-center justify-between rounded-xl border border-line bg-panel px-4 py-3 text-sm">
+          <span className="text-muted">Alertas novos (total)</span>
+          <Link to="/alertas-reincidencia" className="text-cyan hover:underline">
+            {data.alertas_novos_total ?? 0} — ver lista
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <section className="rounded-xl border border-line bg-panel p-4 text-sm">
+          <h2 className="mb-3 font-semibold">Custo improcedente por causa</h2>
+          <ul className="space-y-2">
+            {(data.custo_improcedente_por_causa || []).map((r) => (
+              <li key={r.causa} className="flex justify-between border-b border-line py-1">
+                <span>{r.causa}</span>
+                <span>{money(r.valor)}</span>
+              </li>
+            ))}
+            {!(data.custo_improcedente_por_causa || []).length ? (
+              <li className="text-muted">Sem dados.</li>
+            ) : null}
+          </ul>
+        </section>
+        <section className="rounded-xl border border-line bg-panel p-4 text-sm">
+          <h2 className="mb-3 font-semibold">Por responsavel</h2>
+          <ul className="space-y-2">
+            {(data.custo_improcedente_por_responsavel || []).map((r) => (
+              <li key={r.responsavel_tipo} className="flex justify-between border-b border-line py-1">
+                <span>{r.responsavel_tipo}</span>
+                <span>{money(r.valor)}</span>
+              </li>
+            ))}
+            {!(data.custo_improcedente_por_responsavel || []).length ? (
+              <li className="text-muted">Sem dados.</li>
+            ) : null}
+          </ul>
+        </section>
+        <section className="rounded-xl border border-line bg-panel p-4 text-sm">
+          <h2 className="mb-3 font-semibold">Top pecas improcedentes</h2>
+          <ul className="space-y-2">
+            {(data.top_pecas_improcedentes || []).map((r, i) => (
+              <li key={`${r.codigo}-${r.causa}-${i}`} className="border-b border-line py-1">
+                <div className="flex justify-between">
+                  <span className="font-medium">{r.codigo}</span>
+                  <span>{r.total}x</span>
+                </div>
+                <div className="text-xs text-muted">
+                  {r.causa} · {money(r.valor)}
+                </div>
+              </li>
+            ))}
+            {!(data.top_pecas_improcedentes || []).length ? (
+              <li className="text-muted">Sem dados.</li>
+            ) : null}
+          </ul>
+        </section>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

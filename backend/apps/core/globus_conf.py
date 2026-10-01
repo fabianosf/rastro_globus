@@ -47,6 +47,7 @@ class GlobusSettings:
     host: str = ""
     port: str = ""
     service_name: str = ""
+    oracle_client_lib_dir: str = ""
 
     def public_summary(self) -> dict:
         return {
@@ -59,7 +60,43 @@ class GlobusSettings:
             "user_set": bool(self.user),
             "dsn_set": bool(self.dsn),
             "has_password": bool(self.password),
+            "oracle_client_lib_dir_set": bool(self.oracle_client_lib_dir),
         }
+
+
+def resolve_oracle_client_lib_dir(conf_dir: Path | None = None) -> str:
+    """Resolve Instant Client a partir de conf/ (sem hardcode de caminho pessoal no codigo)."""
+    base = Path(conf_dir) if conf_dir else resolve_conf_dir()
+    if base is None:
+        return ""
+
+    # 1) arquivo texto em conf/ (gitignored junto com conf/)
+    for name in ("oracle_client_dir.txt", "instantclient_dir.txt"):
+        marker = base / name
+        if marker.is_file():
+            try:
+                text = marker.read_text(encoding="utf-8").strip().splitlines()
+                if text:
+                    candidate = Path(text[0].strip().strip('"').strip("'"))
+                    if candidate.is_dir():
+                        return str(candidate.resolve())
+            except OSError:
+                pass
+
+    # 2) pasta local ao lado da conf
+    for rel in (
+        base / "instantclient",
+        base / "oracle" / "instantclient",
+        base.parent / "instantclient",
+        base.parent / "drivers" / "oracle_win" / "oracle" / "instantclient_21_14",
+        base.parent / "drivers" / "oracle_win" / "instantclient_21_14",
+    ):
+        try:
+            if rel.is_dir() and (rel / "oci.dll").exists():
+                return str(rel.resolve())
+        except OSError:
+            continue
+    return ""
 
 
 def _first(data: dict, *keys: str):
@@ -138,6 +175,23 @@ def load_globus_settings(conf_dir: Path | None = None) -> GlobusSettings | None:
         password = str(
             _first(data, "senha", "password", "oracle_password", "Password", "pwd") or ""
         )
+        client_lib = str(
+            _first(
+                data,
+                "oracle_client",
+                "oracle_client_lib_dir",
+                "instant_client",
+                "instantclient",
+                "lib_dir",
+                "ORACLE_CLIENT_LIB_DIR",
+            )
+            or ""
+        ).strip()
+        if not client_lib:
+            client_lib = resolve_oracle_client_lib_dir(base)
+        elif not Path(client_lib).is_dir():
+            client_lib = resolve_oracle_client_lib_dir(base)
+
         dsn, host, port, service = _build_dsn(data)
         if user and dsn:
             return GlobusSettings(
@@ -149,5 +203,6 @@ def load_globus_settings(conf_dir: Path | None = None) -> GlobusSettings | None:
                 host=host,
                 port=port,
                 service_name=service,
+                oracle_client_lib_dir=client_lib,
             )
     return None

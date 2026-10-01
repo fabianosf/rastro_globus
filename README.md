@@ -135,6 +135,13 @@ Arquivos esperados na pasta `conf/` (raiz do monorepo):
 - `chave.key`
 - `erp.dat` (fallback: `erp_BD.dat`, `erp_Old.dat`)
 
+Credenciais vêm de `conf/` (raiz do monorepo): `chave.key` + `erp.dat`.
+
+Instant Client (obrigatório — servidor com Native Network Encryption):
+
+1. Crie `conf/oracle_client_dir.txt` com uma linha = pasta do Instant Client (ex. `...\instantclient_21_14`), **ou**
+2. Defina `ORACLE_CLIENT_LIB_DIR` no `.env`
+
 Variáveis (também em `backend/.env.example`):
 
 ```bash
@@ -151,14 +158,29 @@ cd backend
 python manage.py sync_globus
 python manage.py sync_globus --full
 python manage.py sync_globus --tipo compras
+python manage.py sync_globus --tipo saidas
+python manage.py detectar_reincidencia
 ```
 
-**Agendador de Tarefas (Windows):**
+Apos sync de saidas, rode `detectar_reincidencia` para gerar `AlertaReincidencia` (sem duplicar).
 
-1. Ação: iniciar programa → `backend\.venv\Scripts\python.exe`
-2. Argumentos: `manage.py sync_globus` (working directory = pasta `backend`)
-3. Disparador horário: a cada **1 hora** (incremental)
-4. Segunda tarefa semanal: `manage.py sync_globus --full`
+**Agendador de Tarefas (Windows) — scripts prontos:**
+
+```powershell
+# Job manual (log em logs\sync_globus_YYYYMMDD.log)
+.\scripts\sync_globus_job.ps1 -DetectarReincidencia
+
+# Registrar tarefa diaria 06:30 (pode pedir admin na 1a vez)
+.\scripts\register_sync_globus_task.ps1
+
+# Import BASE GERAL (arquivo em docs\ops\incoming\ ou -Path)
+.\scripts\import_planilha_real.ps1
+
+# Checklist go-live (checks automaticos)
+.\scripts\aceite_golive_check.ps1
+```
+
+Cutover ops: `docs/ops/programa-cutover-improcedentes.md` e `docs/ops/operacao-diaria-novos-rg.md`.
 
 Endpoints:
 

@@ -1,13 +1,13 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import AppLayout from "./layouts/AppLayout";
+import AlertasReincidencia from "./pages/AlertasReincidencia";
 import Dashboard from "./pages/Dashboard";
 import GarantiaFicha from "./pages/GarantiaFicha";
 import GarantiaNova from "./pages/GarantiaNova";
 import GarantiasList from "./pages/GarantiasList";
 import Login from "./pages/Login";
-import MovimentosGlobus from "./pages/MovimentosGlobus";
-import Relatorios from "./pages/Relatorios";
+import RegrasPrazo from "./pages/RegrasPrazo";
 
 function Protected() {
   const { isAuthenticated } = useAuth();
@@ -23,8 +23,8 @@ function titleFor(pathname: string) {
   if (pathname.startsWith("/garantias/nova")) return "Nova garantia";
   if (pathname.match(/^\/garantias\/\d+/)) return "Ficha da garantia";
   if (pathname.startsWith("/garantias")) return "Garantias";
-  if (pathname.startsWith("/movimentos-globus")) return "Movimentos Globus";
-  if (pathname.startsWith("/relatorios")) return "Relatórios";
+  if (pathname.startsWith("/alertas-reincidencia")) return "Alertas de reincidencia";
+  if (pathname.startsWith("/regras-prazo")) return "Regras de prazo";
   return "RastroGlobus";
 }
 
@@ -44,8 +44,12 @@ export default function App() {
             <Route path="/garantias" element={<GarantiasList />} />
             <Route path="/garantias/nova" element={<GarantiaNova />} />
             <Route path="/garantias/:id" element={<GarantiaFicha />} />
-            <Route path="/movimentos-globus" element={<MovimentosGlobus />} />
-            <Route path="/relatorios" element={<Relatorios />} />
+            {/* Mantidas por URL (fora do menu MVP) */}
+            <Route path="/alertas-reincidencia" element={<AlertasReincidencia />} />
+            <Route path="/regras-prazo" element={<RegrasPrazo />} />
+            {/* Removidas do MVP: redirect */}
+            <Route path="/movimentos-globus" element={<Navigate to="/" replace />} />
+            <Route path="/relatorios" element={<Navigate to="/" replace />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
