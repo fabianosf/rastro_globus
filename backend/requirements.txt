@@ -5,3 +5,6 @@ django-cors-headers
 Pillow
 oracledb
 cryptography
+mysqlclient
+python-dotenv
+openpyxl

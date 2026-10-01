@@ -19,4 +19,8 @@ frontend/dist/
 .DS_Store
 .env
 .env.*
+!.env.example
+!backend/.env.example
 *.local
+
+frontend/tsconfig.tsbuildinfo

@@ -8,6 +8,12 @@ from .models import (
     Garantia,
     EventoGarantia,
     Anexo,
+    HistoricoGarantiaMensal,
+    PecaGlobus,
+    VeiculoGlobus,
+    FornecedorGlobus,
+    CompraGlobus,
+    SyncLog,
 )
 
 admin.site.register(Usuario)
@@ -18,3 +24,9 @@ admin.site.register(NotaFiscal)
 admin.site.register(Garantia)
 admin.site.register(EventoGarantia)
 admin.site.register(Anexo)
+admin.site.register(HistoricoGarantiaMensal)
+admin.site.register(PecaGlobus)
+admin.site.register(VeiculoGlobus)
+admin.site.register(FornecedorGlobus)
+admin.site.register(CompraGlobus)
+admin.site.register(SyncLog)

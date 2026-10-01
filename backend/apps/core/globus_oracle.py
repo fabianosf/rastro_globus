@@ -9,7 +9,6 @@ import logging
 import os
 import re
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Any, Iterable
 
 from .globus_conf import GlobusSettings, load_globus_settings
@@ -24,19 +23,22 @@ _READ_RE = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
 
 _THICK_READY = False
 _THICK_ERROR: str | None = None
-
-_CLIENT_CANDIDATES = (
-    Path(r"C:\Users\fabiano.freitas\Documents\PROJ_TOT\drivers\oracle_win\oracle\instantclient_21_14"),
-    Path(r"C:\Users\fabiano.freitas\Documents\PROJ_TOT\drivers\oracle_win\instantclient_21_14"),
-    Path(r"C:\Users\fabiano.freitas\Documents\PROJ_REC_PYTHON\instantclient"),
-    Path(r"C:\oracle\instantclient_21_14"),
-    Path(r"C:\oracle\BIN"),
-    Path(r"C:\oracle"),
-)
+_POOL = None
+_POOL_TIMEOUT_MS: int | None = None
 
 
 class GlobusOracleError(Exception):
-    """Erro amigável de consulta Globus."""
+    """Erro amigavel de consulta Globus."""
+
+
+def _call_timeout_ms(default_ms: int) -> int:
+    raw = (os.environ.get("GLOBUS_CALL_TIMEOUT_MS") or "").strip()
+    if not raw:
+        return default_ms
+    try:
+        return max(1000, int(raw))
+    except ValueError:
+        return default_ms
 
 
 def _ensure_thick_mode(lib_dir: str | None = None) -> tuple[bool, str]:
@@ -46,20 +48,21 @@ def _ensure_thick_mode(lib_dir: str | None = None) -> tuple[bool, str]:
 
     import oracledb
 
-    candidates: list[Path] = []
+    candidates: list[str] = []
     if lib_dir:
-        candidates.append(Path(lib_dir))
+        candidates.append(lib_dir)
     env_lib = (os.environ.get("ORACLE_CLIENT_LIB_DIR") or "").strip()
     if env_lib:
-        candidates.append(Path(env_lib))
-    candidates.extend(_CLIENT_CANDIDATES)
+        candidates.append(env_lib)
 
     errors: list[str] = []
     for folder in candidates:
-        if not folder.exists():
+        if not folder or not os.path.isdir(folder):
+            if folder:
+                errors.append(f"{folder}: nao encontrado")
             continue
         try:
-            oracledb.init_oracle_client(lib_dir=str(folder))
+            oracledb.init_oracle_client(lib_dir=folder)
             _THICK_READY = True
             _THICK_ERROR = None
             return True, f"thick mode OK ({folder})"
@@ -83,7 +86,9 @@ def _ensure_thick_mode(lib_dir: str | None = None) -> tuple[bool, str]:
             return True, "thick mode already initialized"
         errors.append(f"PATH: {exc}")
 
-    _THICK_ERROR = " | ".join(errors) if errors else "Instant Client não encontrado"
+    _THICK_ERROR = " | ".join(errors) if errors else (
+        "Instant Client nao encontrado. Defina ORACLE_CLIENT_LIB_DIR ou PATH."
+    )
     return False, _THICK_ERROR
 
 
@@ -93,13 +98,36 @@ def assert_readonly_sql(sql: str) -> None:
         raise GlobusOracleError("SQL vazio.")
     if _WRITE_RE.search(text) or not _READ_RE.search(text):
         raise GlobusOracleError(
-            "Somente consultas SELECT/WITH são permitidas no Globus (somente leitura)."
+            "Somente consultas SELECT/WITH sao permitidas no Globus (somente leitura)."
         )
 
 
+def reset_pool() -> None:
+    global _POOL, _POOL_TIMEOUT_MS
+    if _POOL is not None:
+        try:
+            _POOL.close()
+        except Exception:
+            pass
+    _POOL = None
+    _POOL_TIMEOUT_MS = None
+
+
 class GlobusOracleClient:
-    def __init__(self, settings: GlobusSettings | None = None):
+    def __init__(
+        self,
+        settings: GlobusSettings | None = None,
+        *,
+        call_timeout_ms: int | None = None,
+        use_pool: bool = False,
+    ):
         self.settings = settings if settings is not None else load_globus_settings()
+        self.call_timeout_ms = (
+            call_timeout_ms
+            if call_timeout_ms is not None
+            else _call_timeout_ms(15000)
+        )
+        self.use_pool = use_pool
 
     @property
     def configured(self) -> bool:
@@ -109,37 +137,68 @@ class GlobusOracleClient:
         if not self.settings:
             return {
                 "configured": False,
-                "detail": "conf/ não encontrada ou erp.dat inválido. "
-                "Defina RASTROGLOBUS_CONF_DIR se necessário.",
+                "detail": "conf/ nao encontrada ou erp.dat invalido. "
+                "Defina RASTROGLOBUS_CONF_DIR se necessario.",
             }
         return self.settings.public_summary()
+
+    def _acquire_pooled(self):
+        global _POOL, _POOL_TIMEOUT_MS
+        import oracledb
+
+        timeout = self.call_timeout_ms
+        if _POOL is None or _POOL_TIMEOUT_MS != timeout:
+            reset_pool()
+            _POOL = oracledb.create_pool(
+                user=self.settings.user,
+                password=self.settings.password,
+                dsn=self.settings.dsn,
+                min=1,
+                max=4,
+                increment=1,
+                getmode=oracledb.POOL_GETMODE_WAIT,
+            )
+            _POOL_TIMEOUT_MS = timeout
+        conn = _POOL.acquire()
+        try:
+            conn.call_timeout = timeout
+        except Exception:
+            pass
+        return conn
 
     @contextmanager
     def connection(self):
         if not self.configured or not self.settings:
             raise GlobusOracleError(
-                "Oracle Globus não configurado. Verifique conf/chave.key e conf/erp.dat."
+                "Oracle Globus nao configurado. Verifique conf/chave.key e conf/erp.dat."
             )
         import oracledb
 
-        # Thick ANTES de qualquer connect: o Globus usa Native Network Encryption
-        # (DPY-3001). Se thin for tentado primeiro, o processo fica preso em thin
-        # e o Instant Client não consegue mais ativar.
         ok_thick, thick_msg = _ensure_thick_mode()
         if ok_thick:
             logger.info("Oracle Globus: %s", thick_msg)
         else:
             logger.warning(
-                "Oracle Instant Client indisponível (%s). Tentando thin (pode falhar com DPY-3001).",
+                "Oracle Instant Client indisponivel (%s). Tentando thin (pode falhar com DPY-3001).",
                 thick_msg,
             )
 
+        conn = None
         try:
-            conn = oracledb.connect(
-                user=self.settings.user,
-                password=self.settings.password,
-                dsn=self.settings.dsn,
-            )
+            if self.use_pool:
+                conn = self._acquire_pooled()
+            else:
+                conn = oracledb.connect(
+                    user=self.settings.user,
+                    password=self.settings.password,
+                    dsn=self.settings.dsn,
+                )
+                try:
+                    conn.call_timeout = self.call_timeout_ms
+                except Exception:
+                    pass
+        except GlobusOracleError:
+            raise
         except Exception as exc:
             err = str(exc)
             hint = ""
@@ -154,16 +213,55 @@ class GlobusOracleClient:
         try:
             yield conn
         finally:
-            conn.close()
+            if conn is None:
+                return
+            if self.use_pool and _POOL is not None:
+                try:
+                    _POOL.release(conn)
+                except Exception:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+            else:
+                conn.close()
 
-    def fetch_all(self, sql: str, params: dict | Iterable | None = None) -> list[dict[str, Any]]:
+    def fetch_all(
+        self,
+        sql: str,
+        params: dict | Iterable | None = None,
+        *,
+        arraysize: int | None = None,
+    ) -> list[dict[str, Any]]:
         assert_readonly_sql(sql)
         with self.connection() as conn:
             cur = conn.cursor()
+            if arraysize:
+                cur.arraysize = arraysize
             cur.execute(sql, params or {})
             columns = [d[0].lower() for d in cur.description] if cur.description else []
             rows = cur.fetchall()
             return [dict(zip(columns, row)) for row in rows]
+
+    def iter_batches(
+        self,
+        sql: str,
+        params: dict | Iterable | None = None,
+        *,
+        arraysize: int = 1000,
+    ):
+        """Yield listas de dicts em lotes (arraysize)."""
+        assert_readonly_sql(sql)
+        with self.connection() as conn:
+            cur = conn.cursor()
+            cur.arraysize = arraysize
+            cur.execute(sql, params or {})
+            columns = [d[0].lower() for d in cur.description] if cur.description else []
+            while True:
+                rows = cur.fetchmany(arraysize)
+                if not rows:
+                    break
+                yield [dict(zip(columns, row)) for row in rows]
 
     def fetch_one(self, sql: str, params: dict | Iterable | None = None) -> dict[str, Any] | None:
         rows = self.fetch_all(sql, params)
@@ -172,7 +270,7 @@ class GlobusOracleClient:
     def ping(self) -> tuple[bool, str, dict]:
         base = self.public_status_base()
         if not self.configured:
-            return False, base.get("detail", "Não configurado."), base
+            return False, base.get("detail", "Nao configurado."), base
         try:
             row = self.fetch_one("SELECT 1 AS ok FROM DUAL")
             ok = bool(row and int(row.get("ok", 0)) == 1)

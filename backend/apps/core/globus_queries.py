@@ -84,7 +84,7 @@ def buscar_nfs(numero: str) -> list[dict[str, Any]]:
     numero = (numero or "").strip()
     if not numero:
         raise GlobusOracleError("Informe o número da NF.")
-    client = GlobusOracleClient()
+    client = GlobusOracleClient(call_timeout_ms=15000)
     rows = client.fetch_all(SQL_NF_POR_NUMERO, {"numero": numero})
     return [_serialize_row(r) for r in rows]
 

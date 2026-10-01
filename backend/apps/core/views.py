@@ -14,7 +14,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Anexo, Fornecedor, Garantia, NotaFiscal, Peca, Usuario, Veiculo
+from .models import (
+    Anexo,
+    Fornecedor,
+    Garantia,
+    HistoricoGarantiaMensal,
+    NotaFiscal,
+    Peca,
+    Usuario,
+    Veiculo,
+)
+from .planilha_import import EMPRESAS, normalize_empresa
 from .permissions import (
     CanAnexar,
     CanChangeStatus,
@@ -315,34 +325,20 @@ class GarantiaViewSet(viewsets.ModelViewSet):
         return qs
 
     def list(self, request, *args, **kwargs):
-        """Lista garantias RG enriquecida com última compra Globus da peça."""
+        """Lista garantias RG enriquecida com ultima compra do espelho CompraGlobus."""
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         data = list(serializer.data)
 
-        globus_ok = False
-        globus_detail = ""
-        compras_map: dict = {}
-        try:
-            from .globus_oracle import GlobusOracleClient
-            from .globus_queries import buscar_compras_por_codigos
+        from .globus_sync import compras_por_codigos_local, sync_status_payload
 
-            client = GlobusOracleClient()
-            if client.configured:
-                ok, detail, _ = client.ping()
-                globus_ok = ok
-                globus_detail = detail
-                if ok:
-                    codigos = [row.get("peca_codigo") for row in data if row.get("peca_codigo")]
-                    if codigos:
-                        compras_map = buscar_compras_por_codigos(
-                            codigos, limite_por_peca=1
-                        )
-            else:
-                globus_detail = "conf/ Oracle não configurado."
-        except Exception as exc:
-            globus_ok = False
-            globus_detail = str(exc)
+        status_sync = sync_status_payload()
+        globus_ok = bool(status_sync.get("ok"))
+        globus_detail = status_sync.get("detail") or ""
+        compras_map: dict = {}
+        codigos = [row.get("peca_codigo") for row in data if row.get("peca_codigo")]
+        if codigos:
+            compras_map = compras_por_codigos_local(codigos, limite_por_peca=1)
 
         for row in data:
             codigo = row.get("peca_codigo") or ""
@@ -617,6 +613,177 @@ class RankingVeiculosView(APIView):
         return Response(_dashboard_payload(ano)["veiculos_alerta"])
 
 
+MERGE_HISTORICO_APP_FROM = date(2026, 10, 1)
+
+
+def _money_bucket():
+    return {
+        "solicitado": Decimal("0"),
+        "concedido": Decimal("0"),
+        "em_analise": Decimal("0"),
+        "negado": Decimal("0"),
+    }
+
+
+def _add_bucket(target, concedido=0, em_analise=0, negado=0):
+    c = Decimal(concedido or 0)
+    e = Decimal(em_analise or 0)
+    n = Decimal(negado or 0)
+    target["concedido"] += c
+    target["em_analise"] += e
+    target["negado"] += n
+    target["solicitado"] += c + e + n
+
+
+def _garantia_status_bucket(status: str) -> str | None:
+    if status in {Garantia.Status.PROCEDENTE, Garantia.Status.CORTESIA}:
+        return "concedido"
+    if status in {
+        Garantia.Status.ABERTA,
+        Garantia.Status.ENVIADA,
+        Garantia.Status.EM_ANALISE,
+    }:
+        return "em_analise"
+    if status == Garantia.Status.IMPROCEDENTE:
+        return "negado"
+    return None
+
+
+def _historico_payload(ano: int, empresa: str = "", fornecedor_id: int | None = None):
+    qs = HistoricoGarantiaMensal.objects.filter(competencia__year=ano).select_related(
+        "fornecedor"
+    )
+    if empresa:
+        qs = qs.filter(empresa=empresa)
+    if fornecedor_id:
+        qs = qs.filter(fornecedor_id=fornecedor_id)
+
+    por_mes: dict[str, dict] = {}
+    por_empresa: dict[str, dict] = {}
+    ranking: dict[int, dict] = {}
+    totais = _money_bucket()
+
+    for row in qs:
+        key_mes = row.competencia.strftime("%Y-%m")
+        if key_mes not in por_mes:
+            por_mes[key_mes] = {"competencia": key_mes, **_money_bucket()}
+        _add_bucket(
+            por_mes[key_mes],
+            row.valor_concedido,
+            row.valor_em_analise,
+            row.valor_negado,
+        )
+
+        if row.empresa not in por_empresa:
+            por_empresa[row.empresa] = {"empresa": row.empresa, **_money_bucket()}
+        _add_bucket(
+            por_empresa[row.empresa],
+            row.valor_concedido,
+            row.valor_em_analise,
+            row.valor_negado,
+        )
+
+        fid = row.fornecedor_id
+        if fid not in ranking:
+            ranking[fid] = {
+                "fornecedor_id": fid,
+                "fornecedor": str(row.fornecedor),
+                **_money_bucket(),
+            }
+        _add_bucket(
+            ranking[fid],
+            row.valor_concedido,
+            row.valor_em_analise,
+            row.valor_negado,
+        )
+        _add_bucket(totais, row.valor_concedido, row.valor_em_analise, row.valor_negado)
+
+    # Merge garantias do app a partir de out/2026
+    if date(ano, 12, 31) >= MERGE_HISTORICO_APP_FROM:
+        gqs = Garantia.objects.filter(criado_em__year=ano).select_related(
+            "fornecedor", "veiculo"
+        )
+        if fornecedor_id:
+            gqs = gqs.filter(fornecedor_id=fornecedor_id)
+        if ano == MERGE_HISTORICO_APP_FROM.year:
+            gqs = gqs.filter(criado_em__month__gte=MERGE_HISTORICO_APP_FROM.month)
+
+        for g in gqs:
+            bucket = _garantia_status_bucket(g.status)
+            if not bucket:
+                continue
+            competencia = date(g.criado_em.year, g.criado_em.month, 1)
+            if competencia < MERGE_HISTORICO_APP_FROM:
+                continue
+            casa = normalize_empresa(g.veiculo.casa if g.veiculo_id else "")
+            if empresa and casa != empresa:
+                continue
+
+            valor = g.valor_peca or Decimal("0")
+            kwargs = {bucket: valor}
+            key_mes = competencia.strftime("%Y-%m")
+            if key_mes not in por_mes:
+                por_mes[key_mes] = {"competencia": key_mes, **_money_bucket()}
+            _add_bucket(por_mes[key_mes], **kwargs)
+            _add_bucket(totais, **kwargs)
+
+            fid = g.fornecedor_id
+            if fid not in ranking:
+                ranking[fid] = {
+                    "fornecedor_id": fid,
+                    "fornecedor": str(g.fornecedor),
+                    **_money_bucket(),
+                }
+            _add_bucket(ranking[fid], **kwargs)
+
+            if casa in EMPRESAS:
+                if casa not in por_empresa:
+                    por_empresa[casa] = {"empresa": casa, **_money_bucket()}
+                _add_bucket(por_empresa[casa], **kwargs)
+
+    def _serialize_money(d):
+        out = {k: v for k, v in d.items() if k not in _money_bucket()}
+        for k in ("solicitado", "concedido", "em_analise", "negado"):
+            if k in d:
+                out[k] = str(d[k])
+        return out
+
+    ranking_list = sorted(
+        ranking.values(), key=lambda r: r["negado"], reverse=True
+    )[:20]
+
+    return {
+        "ano": ano,
+        "empresa": empresa or None,
+        "fornecedor": fornecedor_id,
+        "merge_app_from": MERGE_HISTORICO_APP_FROM.isoformat(),
+        "por_mes": [_serialize_money(por_mes[k]) for k in sorted(por_mes.keys())],
+        "por_empresa": [
+            _serialize_money(por_empresa[k]) for k in sorted(por_empresa.keys())
+        ],
+        "ranking_negado": [_serialize_money(r) for r in ranking_list],
+        "totais": {
+            k: str(totais[k]) for k in ("solicitado", "concedido", "em_analise", "negado")
+        },
+    }
+
+
+class RelatorioHistoricoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        ano = int(request.query_params.get("ano", timezone.now().year))
+        empresa = normalize_empresa(request.query_params.get("empresa", ""))
+        if empresa and empresa not in EMPRESAS:
+            return Response(
+                {"detail": f"empresa invalida. Use: {', '.join(sorted(EMPRESAS))}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        fornecedor_raw = request.query_params.get("fornecedor", "").strip()
+        fornecedor_id = int(fornecedor_raw) if fornecedor_raw.isdigit() else None
+        return Response(_historico_payload(ano, empresa=empresa, fornecedor_id=fornecedor_id))
+
+
 class ExportCsvView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -660,21 +827,17 @@ class ExportCsvView(APIView):
 
 
 class GlobusStatusView(APIView):
-    """Ping Oracle Globus (somente leitura). Qualquer perfil autenticado."""
+    """Status do espelho local (SyncLog). Oracle e lido so pelo job sync_globus."""
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from .globus_oracle import GlobusOracleClient
+        from .globus_sync import sync_status_payload
 
-        ok, detail, info = GlobusOracleClient().ping()
+        payload = sync_status_payload()
+        ok = bool(payload.get("ok"))
         return Response(
-            {
-                "ok": ok,
-                "detail": detail,
-                "readonly": True,
-                **info,
-            },
+            payload,
             status=status.HTTP_200_OK if ok else status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
@@ -848,8 +1011,8 @@ class GlobusComprasView(APIView):
 
 class ImprocedentesComprasView(APIView):
     """
-    Cruza garantias improcedentes (SQLite RG) com compras/aquisição Globus.
-    Improcedente NÃO vem do Globo — só do RastroGlobus.
+    Cruza garantias improcedentes (RG) com compras do espelho CompraGlobus.
+    Improcedente NAO vem do Globo — so do RastroGlobus. Oracle fora do ar nao impede.
     """
 
     permission_classes = [IsAuthenticated]
@@ -857,13 +1020,12 @@ class ImprocedentesComprasView(APIView):
     def get(self, request):
         from django.utils import timezone as tz
 
-        from .globus_oracle import GlobusOracleClient
-        from .globus_queries import buscar_compras_por_codigos
+        from .globus_sync import compras_por_codigos_local, sync_status_payload
 
         try:
             ano = int(request.query_params.get("ano", tz.now().year))
         except (TypeError, ValueError):
-            return Response({"detail": "Ano inválido."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Ano invalido."}, status=status.HTTP_400_BAD_REQUEST)
 
         peca_filtro = request.query_params.get("peca", "").strip()
         qs = (
@@ -880,33 +1042,20 @@ class ImprocedentesComprasView(APIView):
         garantias = list(qs[:200])
         codigos = [g.peca.codigo_interno for g in garantias if g.peca_id]
 
-        globus_ok = False
-        globus_detail = ""
-        compras_map: dict = {}
-        client = GlobusOracleClient()
-        if client.configured:
-            try:
-                ok, detail, _ = client.ping()
-                globus_ok = ok
-                globus_detail = detail
-                if ok and codigos:
-                    compras_map = buscar_compras_por_codigos(
-                        codigos,
-                        data_ini=f"{ano - 5}-01-01",
-                        data_fim=f"{ano}-12-31",
-                        limite_por_peca=5,
-                    )
-            except Exception as exc:
-                globus_ok = False
-                globus_detail = f"Compras Globus indisponíveis: {exc}"
-        else:
-            globus_detail = "conf/ Oracle não configurado. Compras Globus indisponíveis."
+        status_sync = sync_status_payload()
+        globus_ok = bool(status_sync.get("ok"))
+        globus_detail = status_sync.get("detail") or ""
+        compras_map = compras_por_codigos_local(
+            codigos,
+            data_ini=date(ano - 5, 1, 1),
+            data_fim=date(ano, 12, 31),
+            limite_por_peca=5,
+        )
 
         results = []
         for g in garantias:
             codigo = g.peca.codigo_interno
             compras = compras_map.get(codigo, [])
-            # também tenta match por chave case-insensitive
             if not compras:
                 for k, v in compras_map.items():
                     if k.lower() == codigo.lower():
@@ -939,8 +1088,63 @@ class ImprocedentesComprasView(APIView):
                 "globus_detail": globus_detail,
                 "readonly": True,
                 "aviso": (
-                    "Improcedente vem do RastroGlobus. Compras vêm do Globus (leitura). "
-                    "Estoque continua no Globo."
+                    "Improcedente vem do RastroGlobus. Compras vêm do espelho local "
+                    "(sync_globus). Estoque continua no Globo."
                 ),
             }
         )
+
+
+class GlobusLocalPecasView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import PecaGlobus
+
+        q = request.query_params.get("q", "").strip()
+        if len(q) < 2:
+            return Response(
+                {"detail": "Informe ao menos 2 caracteres."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = PecaGlobus.objects.filter(
+            Q(codigo_interno__icontains=q) | Q(descricao__icontains=q)
+        ).order_by("codigo_interno")[:30]
+        rows = [
+            {
+                "codigo_interno": p.codigo_interno,
+                "descricao": p.descricao,
+                "codigo_mat_int": p.codigo_mat_int,
+                "codigo_grupo": p.codigo_grupo,
+            }
+            for p in qs
+        ]
+        return Response({"count": len(rows), "results": rows, "source": "local"})
+
+
+class GlobusLocalVeiculosView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import VeiculoGlobus
+
+        q = request.query_params.get("q", "").strip()
+        if len(q) < 2:
+            return Response(
+                {"detail": "Informe ao menos 2 caracteres."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = VeiculoGlobus.objects.filter(
+            Q(prefixo__icontains=q) | Q(placa__icontains=q) | Q(codigo_veic_globus__icontains=q)
+        ).order_by("prefixo")[:30]
+        rows = [
+            {
+                "codigo": v.prefixo or v.codigo_veic_globus,
+                "placa": v.placa,
+                "codigo_veic_globus": v.codigo_veic_globus,
+                "codigo_empresa": v.codigo_empresa,
+                "condicao": v.condicao,
+            }
+            for v in qs
+        ]
+        return Response({"count": len(rows), "results": rows, "source": "local"})

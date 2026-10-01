@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { api, ApiError } from "../api/client";
 import BadgeStatus from "../components/BadgeStatus";
 import GlobusStatusBadge from "../components/GlobusStatusBadge";
@@ -61,6 +71,32 @@ type DashboardData = {
   };
 };
 
+type HistoricoRow = {
+  competencia?: string;
+  empresa?: string;
+  fornecedor?: string;
+  solicitado: string;
+  concedido: string;
+  em_analise: string;
+  negado: string;
+};
+
+type HistoricoData = {
+  ano: number;
+  por_mes: HistoricoRow[];
+  por_empresa: HistoricoRow[];
+  ranking_negado: HistoricoRow[];
+  totais: {
+    solicitado: string;
+    concedido: string;
+    em_analise: string;
+    negado: string;
+  };
+  merge_app_from?: string;
+};
+
+type Tab = "vivo" | "historico";
+
 function money(v: string | number | undefined) {
   if (v === undefined || v === null || v === "") return "—";
   const n = Number(v);
@@ -72,47 +108,268 @@ function sliceDate(v?: string) {
   return v ? String(v).slice(0, 10) : "—";
 }
 
+function num(v: string | number | undefined) {
+  const n = Number(v);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function chartMoney(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+
+const CHART_COLORS = {
+  solicitado: "#38bdf8",
+  concedido: "#34d399",
+  em_analise: "#fbbf24",
+  negado: "#f87171",
+};
+
 export default function Dashboard() {
-  const ano = new Date().getFullYear();
+  const currentYear = new Date().getFullYear();
+  const [tab, setTab] = useState<Tab>("vivo");
+  const [anoVivo] = useState(currentYear);
+  const [anoHist, setAnoHist] = useState(currentYear);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [hist, setHist] = useState<HistoricoData | null>(null);
   const [error, setError] = useState("");
+  const [histError, setHistError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [histLoading, setHistLoading] = useState(false);
 
   useEffect(() => {
-    api<DashboardData>(`/api/dashboard/?ano=${ano}`)
+    setLoading(true);
+    api<DashboardData>(`/api/dashboard/?ano=${anoVivo}`)
       .then(setData)
       .catch((e) => setError(e instanceof ApiError ? e.message : "Erro ao carregar dashboard."))
       .finally(() => setLoading(false));
-  }, [ano]);
+  }, [anoVivo]);
 
-  if (loading) return <p className="text-muted">Carregando dashboard...</p>;
-  if (error) return <p className="text-red">{error}</p>;
-  if (!data) return null;
+  useEffect(() => {
+    if (tab !== "historico") return;
+    setHistLoading(true);
+    setHistError("");
+    const q = new URLSearchParams({ ano: String(anoHist) });
+    api<HistoricoData>(`/api/relatorios/historico/?${q}`)
+      .then(setHist)
+      .catch((e) => setHistError(e instanceof ApiError ? e.message : "Erro ao carregar historico."))
+      .finally(() => setHistLoading(false));
+  }, [tab, anoHist]);
 
-  const c = data.contagem_status;
-  const g = data.globus;
+  const mesChart = useMemo(
+    () =>
+      (hist?.por_mes || []).map((r) => ({
+        name: r.competencia || "",
+        solicitado: num(r.solicitado),
+        concedido: num(r.concedido),
+        em_analise: num(r.em_analise),
+        negado: num(r.negado),
+      })),
+    [hist],
+  );
+
+  const empresaChart = useMemo(
+    () =>
+      (hist?.por_empresa || []).map((r) => ({
+        name: r.empresa || "",
+        solicitado: num(r.solicitado),
+        concedido: num(r.concedido),
+        em_analise: num(r.em_analise),
+        negado: num(r.negado),
+      })),
+    [hist],
+  );
+
+  const rankingChart = useMemo(
+    () =>
+      (hist?.ranking_negado || []).slice(0, 10).map((r) => ({
+        name: (r.fornecedor || "").slice(0, 22),
+        negado: num(r.negado),
+      })),
+    [hist],
+  );
+
+  const anosOpts = useMemo(() => {
+    const years: number[] = [];
+    for (let y = currentYear; y >= 2023; y -= 1) years.push(y);
+    return years;
+  }, [currentYear]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-sm text-muted">Visão do ano {data.ano}</p>
+          <p className="text-sm text-muted">Painel de garantias</p>
           <p className="text-xs text-muted">O Globo controla estoque. O RastroGlobus controla o rastro.</p>
         </div>
         <GlobusStatusBadge />
       </div>
 
+      <div className="flex flex-wrap gap-2 border-b border-line pb-2">
+        <button
+          type="button"
+          onClick={() => setTab("vivo")}
+          className={`rounded-md px-3 py-1.5 text-sm ${
+            tab === "vivo" ? "bg-cyan/20 text-cyan" : "text-muted hover:text-ink"
+          }`}
+        >
+          RG ao vivo
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("historico")}
+          className={`rounded-md px-3 py-1.5 text-sm ${
+            tab === "historico" ? "bg-cyan/20 text-cyan" : "text-muted hover:text-ink"
+          }`}
+        >
+          Historico (planilha)
+        </button>
+      </div>
+
+      {tab === "vivo" ? (
+        loading ? (
+          <p className="text-muted">Carregando dashboard...</p>
+        ) : error ? (
+          <p className="text-red">{error}</p>
+        ) : data ? (
+          <DashboardVivo data={data} />
+        ) : null
+      ) : (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Ano</span>
+              <select
+                className="rounded-md border border-line bg-panel px-3 py-2"
+                value={anoHist}
+                onChange={(e) => setAnoHist(Number(e.target.value))}
+              >
+                {anosOpts.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {hist?.merge_app_from ? (
+              <p className="text-xs text-muted">
+                A partir de {hist.merge_app_from} os totais somam o historico da planilha com as
+                garantias do app.
+              </p>
+            ) : null}
+          </div>
+
+          {histLoading ? <p className="text-muted">Carregando historico...</p> : null}
+          {histError ? <p className="text-red">{histError}</p> : null}
+
+          {hist && !histLoading ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                <div>
+                  <p className="text-muted">Solicitado</p>
+                  <p className="text-lg font-semibold">{money(hist.totais.solicitado)}</p>
+                </div>
+                <div>
+                  <p className="text-muted">Concedido</p>
+                  <p className="text-lg font-semibold text-green">{money(hist.totais.concedido)}</p>
+                </div>
+                <div>
+                  <p className="text-muted">Em analise</p>
+                  <p className="text-lg font-semibold text-amber">{money(hist.totais.em_analise)}</p>
+                </div>
+                <div>
+                  <p className="text-muted">Negado</p>
+                  <p className="text-lg font-semibold text-red">{money(hist.totais.negado)}</p>
+                </div>
+              </div>
+
+              <section className="space-y-2">
+                <h2 className="font-semibold">Por mes</h2>
+                <div className="h-72 w-full">
+                  {mesChart.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={mesChart}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                        <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => chartMoney(Number(v))} width={90} />
+                        <Tooltip formatter={(v: number) => money(v)} contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
+                        <Legend />
+                        <Bar dataKey="solicitado" fill={CHART_COLORS.solicitado} name="Solicitado" />
+                        <Bar dataKey="concedido" fill={CHART_COLORS.concedido} name="Concedido" />
+                        <Bar dataKey="em_analise" fill={CHART_COLORS.em_analise} name="Em analise" />
+                        <Bar dataKey="negado" fill={CHART_COLORS.negado} name="Negado" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-sm text-muted">Sem dados da planilha para {anoHist}.</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h2 className="font-semibold">Por empresa</h2>
+                <div className="h-72 w-full">
+                  {empresaChart.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={empresaChart}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                        <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => chartMoney(Number(v))} width={90} />
+                        <Tooltip formatter={(v: number) => money(v)} contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
+                        <Legend />
+                        <Bar dataKey="solicitado" fill={CHART_COLORS.solicitado} name="Solicitado" />
+                        <Bar dataKey="concedido" fill={CHART_COLORS.concedido} name="Concedido" />
+                        <Bar dataKey="em_analise" fill={CHART_COLORS.em_analise} name="Em analise" />
+                        <Bar dataKey="negado" fill={CHART_COLORS.negado} name="Negado" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-sm text-muted">Sem breakdown por empresa.</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h2 className="font-semibold">Top fornecedores (valor negado)</h2>
+                <div className="h-80 w-full">
+                  {rankingChart.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={rankingChart} layout="vertical" margin={{ left: 24 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => chartMoney(Number(v))} />
+                        <YAxis type="category" dataKey="name" width={120} tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                        <Tooltip formatter={(v: number) => money(v)} contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
+                        <Bar dataKey="negado" fill={CHART_COLORS.negado} name="Negado" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-sm text-muted">Sem ranking.</p>
+                  )}
+                </div>
+              </section>
+            </>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashboardVivo({ data }: { data: DashboardData }) {
+  const c = data.contagem_status;
+  const g = data.globus;
+
+  return (
+    <div className="space-y-6">
       <div className="rounded-lg border border-line bg-panel/80 px-4 py-3 text-sm text-muted">
-        Garantias são cadastro do RastroGlobus. Peças, NF e movimentos vêm do Globus (somente leitura).
+        Visao do ano {data.ano}. Garantias sao cadastro do RastroGlobus. Pecas, NF e movimentos vem do
+        Globus (somente leitura).
       </div>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="font-semibold">Globus ao vivo</h2>
-            <p className="text-xs text-muted">
-              {g?.aviso || "Compras e movimentos recentes (leitura)."}
-            </p>
+            <p className="text-xs text-muted">{g?.aviso || "Compras e movimentos recentes (leitura)."}</p>
           </div>
           <Link to="/movimentos-globus" className="text-sm text-cyan hover:underline">
             Ver movimentos
@@ -121,7 +378,7 @@ export default function Dashboard() {
 
         {!g?.ok ? (
           <div className="rounded-lg border border-amber/40 bg-amber/10 px-4 py-3 text-sm text-amber">
-            {g?.detail || "Globus indisponível."}
+            {g?.detail || "Globus indisponivel."}
           </div>
         ) : null}
 
@@ -131,13 +388,13 @@ export default function Dashboard() {
               <thead className="border-b border-line text-muted">
                 <tr>
                   <th className="px-3 py-2 font-medium" colSpan={4}>
-                    Últimas compras / aquisição
+                    Ultimas compras / aquisicao
                   </th>
                 </tr>
                 <tr className="text-xs">
                   <th className="px-3 py-2 font-medium">Data</th>
                   <th className="px-3 py-2 font-medium">NF</th>
-                  <th className="px-3 py-2 font-medium">Peça</th>
+                  <th className="px-3 py-2 font-medium">Peca</th>
                   <th className="px-3 py-2 font-medium">Valor</th>
                 </tr>
               </thead>
@@ -178,13 +435,13 @@ export default function Dashboard() {
               <thead className="border-b border-line text-muted">
                 <tr>
                   <th className="px-3 py-2 font-medium" colSpan={4}>
-                    Últimos movimentos
+                    Ultimos movimentos
                   </th>
                 </tr>
                 <tr className="text-xs">
                   <th className="px-3 py-2 font-medium">Data</th>
                   <th className="px-3 py-2 font-medium">Tipo</th>
-                  <th className="px-3 py-2 font-medium">Peça</th>
+                  <th className="px-3 py-2 font-medium">Peca</th>
                   <th className="px-3 py-2 font-medium">Qtd / NF</th>
                 </tr>
               </thead>
@@ -224,7 +481,7 @@ export default function Dashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <KpiCard title="Abertas" value={c.aberta || 0} accent="cyan" />
-        <KpiCard title="Em análise / enviadas" value={(c.em_analise || 0) + (c.enviada || 0)} accent="amber" />
+        <KpiCard title="Em analise / enviadas" value={(c.em_analise || 0) + (c.enviada || 0)} accent="amber" />
         <KpiCard title="Procedentes" value={c.procedente || 0} accent="green" />
         <KpiCard title="Improcedentes" value={c.improcedente || 0} accent="red" />
         <KpiCard title="Cortesia" value={c.cortesia || 0} accent="violet" />
@@ -239,11 +496,11 @@ export default function Dashboard() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border border-line bg-panel p-4">
-          <h2 className="mb-3 font-semibold">Ranking de peças (garantias RG)</h2>
+          <h2 className="mb-3 font-semibold">Ranking de pecas (garantias RG)</h2>
           <table className="w-full text-left text-sm">
             <thead className="text-muted">
               <tr>
-                <th className="pb-2 font-medium">Peça</th>
+                <th className="pb-2 font-medium">Peca</th>
                 <th className="pb-2 font-medium">Qtd</th>
                 <th className="pb-2 font-medium">Valor</th>
               </tr>
@@ -270,7 +527,7 @@ export default function Dashboard() {
         </section>
 
         <section className="rounded-xl border border-line bg-panel p-4">
-          <h2 className="mb-3 font-semibold">Veículos com 2+ garantias</h2>
+          <h2 className="mb-3 font-semibold">Veiculos com 2+ garantias</h2>
           <ul className="space-y-2 text-sm">
             {data.veiculos_alerta.map((v) => (
               <li key={v.veiculo_id} className="flex justify-between border-b border-line py-2">
@@ -281,14 +538,14 @@ export default function Dashboard() {
               </li>
             ))}
             {!data.veiculos_alerta.length ? (
-              <li className="text-muted">Nenhum alerta no período.</li>
+              <li className="text-muted">Nenhum alerta no periodo.</li>
             ) : null}
           </ul>
         </section>
       </div>
 
       <section className="rounded-xl border border-line bg-panel p-4">
-        <h2 className="mb-3 font-semibold">Parados há mais de 45 dias</h2>
+        <h2 className="mb-3 font-semibold">Parados ha mais de 45 dias</h2>
         <div className="space-y-2">
           {data.parados_45_dias.map((p) => (
             <Link
@@ -297,7 +554,7 @@ export default function Dashboard() {
               className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-3 py-2 text-sm hover:border-cyan/50"
             >
               <span>
-                {p.protocolo} · {p.peca} · veículo {p.veiculo}
+                {p.protocolo} · {p.peca} · veiculo {p.veiculo}
               </span>
               <BadgeStatus status={p.status} />
             </Link>

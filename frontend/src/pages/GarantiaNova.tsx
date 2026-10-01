@@ -6,7 +6,9 @@ import { canCreateGarantia } from "../auth/permissions";
 import GlobusStatusBadge, {
   buscarNfGlobus,
   buscarPecasGlobus,
+  buscarPecasLocal,
   buscarVeiculosGlobus,
+  buscarVeiculosLocal,
   GlobusPeca,
   GlobusVeiculo,
 } from "../components/GlobusStatusBadge";
@@ -62,43 +64,91 @@ export default function GarantiaNova() {
       .catch((e) => setError(e instanceof ApiError ? e.message : "Erro ao carregar cadastros."));
   }, [allowed]);
 
-  async function buscarVeiculoGlobus() {
+  async function buscarVeiculoLocal() {
     if (qVeiculo.trim().length < 2) {
-      setError("Informe ao menos 2 caracteres para buscar veículo no Globus.");
+      setError("Informe ao menos 2 caracteres para buscar veiculo no espelho local.");
       return;
     }
     setError("");
+    setMsgGlobus("");
     setBuscandoVeiculo(true);
     try {
-      const rows = await buscarVeiculosGlobus(qVeiculo.trim());
+      const rows = await buscarVeiculosLocal(qVeiculo.trim());
       setHitsVeiculo(rows);
       setGlobusOffline(false);
-      if (!rows.length) setMsgGlobus("Nenhum veículo encontrado no Globus.");
+      if (!rows.length) setMsgGlobus("Nenhum veiculo no espelho local. Tente sync_globus ou busca ao vivo.");
+      else setMsgGlobus(`Espelho local: ${rows.length} veiculo(s).`);
     } catch (e) {
       setHitsVeiculo([]);
-      setGlobusOffline(true);
-      setError(e instanceof ApiError ? e.message : "Falha ao buscar veículos no Globus.");
+      setError(e instanceof ApiError ? e.message : "Falha ao buscar veiculos locais.");
     } finally {
       setBuscandoVeiculo(false);
     }
   }
 
-  async function buscarPecaGlobus() {
-    if (qPeca.trim().length < 2) {
-      setError("Informe ao menos 2 caracteres para buscar peça no Globus.");
+  async function buscarVeiculoAoVivo() {
+    if (qVeiculo.trim().length < 2) {
+      setError("Informe ao menos 2 caracteres para buscar veiculo no Globus ao vivo.");
       return;
     }
     setError("");
+    setMsgGlobus("");
+    setBuscandoVeiculo(true);
+    try {
+      const rows = await buscarVeiculosGlobus(qVeiculo.trim());
+      setHitsVeiculo(rows);
+      setGlobusOffline(false);
+      if (!rows.length) setMsgGlobus("Nenhum veiculo encontrado no Globus ao vivo.");
+      else setMsgGlobus(`Globus ao vivo: ${rows.length} veiculo(s).`);
+    } catch (e) {
+      setHitsVeiculo([]);
+      setGlobusOffline(true);
+      setError(e instanceof ApiError ? e.message : "Falha ao buscar veiculos no Globus ao vivo.");
+    } finally {
+      setBuscandoVeiculo(false);
+    }
+  }
+
+  async function buscarPecaLocal() {
+    if (qPeca.trim().length < 2) {
+      setError("Informe ao menos 2 caracteres para buscar peca no espelho local.");
+      return;
+    }
+    setError("");
+    setMsgGlobus("");
+    setBuscandoPeca(true);
+    try {
+      const rows = await buscarPecasLocal(qPeca.trim());
+      setHitsPeca(rows);
+      setGlobusOffline(false);
+      if (!rows.length) setMsgGlobus("Nenhuma peca no espelho local. Tente sync_globus ou busca ao vivo.");
+      else setMsgGlobus(`Espelho local: ${rows.length} peca(s).`);
+    } catch (e) {
+      setHitsPeca([]);
+      setError(e instanceof ApiError ? e.message : "Falha ao buscar pecas locais.");
+    } finally {
+      setBuscandoPeca(false);
+    }
+  }
+
+  async function buscarPecaAoVivo() {
+    if (qPeca.trim().length < 2) {
+      setError("Informe ao menos 2 caracteres para buscar peca no Globus ao vivo.");
+      return;
+    }
+    setError("");
+    setMsgGlobus("");
     setBuscandoPeca(true);
     try {
       const rows = await buscarPecasGlobus(qPeca.trim());
       setHitsPeca(rows);
       setGlobusOffline(false);
-      if (!rows.length) setMsgGlobus("Nenhuma peça encontrada no Globus.");
+      if (!rows.length) setMsgGlobus("Nenhuma peca encontrada no Globus ao vivo.");
+      else setMsgGlobus(`Globus ao vivo: ${rows.length} peca(s).`);
     } catch (e) {
       setHitsPeca([]);
       setGlobusOffline(true);
-      setError(e instanceof ApiError ? e.message : "Falha ao buscar peças no Globus.");
+      setError(e instanceof ApiError ? e.message : "Falha ao buscar pecas no Globus ao vivo.");
     } finally {
       setBuscandoPeca(false);
     }
@@ -251,33 +301,41 @@ export default function GarantiaNova() {
       <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-line bg-panel p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted">
-            Busque peça/veículo no Globus (código real). Não movimenta estoque.
+            Busque peca/veiculo no espelho local (sync_globus). Oracle so no job ou no botao ao vivo. Nao movimenta estoque.
           </p>
           <GlobusStatusBadge />
         </div>
 
         {globusOffline ? (
           <div className="rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-xs text-amber">
-            Globus offline — use o cadastro local abaixo como fallback.
+            Oracle ao vivo indisponivel — continue com o espelho local ou cadastro RG.
           </div>
         ) : null}
 
         <div>
-          <label className="mb-1 block text-sm text-muted">Veículo (Globus)</label>
-          <div className="flex gap-2">
+          <label className="mb-1 block text-sm text-muted">Veiculo (espelho local)</label>
+          <div className="flex flex-wrap gap-2">
             <input
-              className={field}
+              className={`${field} min-w-[12rem] flex-1`}
               placeholder="Prefixo ou placa…"
               value={qVeiculo}
               onChange={(e) => setQVeiculo(e.target.value)}
             />
             <button
               type="button"
-              onClick={buscarVeiculoGlobus}
+              onClick={buscarVeiculoLocal}
               disabled={buscandoVeiculo}
               className="shrink-0 rounded-lg border border-line px-3 text-sm text-cyan disabled:opacity-60"
             >
-              {buscandoVeiculo ? "…" : "Buscar Globus"}
+              {buscandoVeiculo ? "…" : "Buscar local"}
+            </button>
+            <button
+              type="button"
+              onClick={buscarVeiculoAoVivo}
+              disabled={buscandoVeiculo}
+              className="shrink-0 rounded-lg border border-line px-3 text-sm text-muted disabled:opacity-60"
+            >
+              Buscar no Globus ao vivo
             </button>
           </div>
           {veiculoLabel ? (
@@ -320,21 +378,29 @@ export default function GarantiaNova() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm text-muted">Peça (Globus)</label>
-          <div className="flex gap-2">
+          <label className="mb-1 block text-sm text-muted">Peca (espelho local)</label>
+          <div className="flex flex-wrap gap-2">
             <input
-              className={field}
-              placeholder="Código ou descrição…"
+              className={`${field} min-w-[12rem] flex-1`}
+              placeholder="Codigo ou descricao…"
               value={qPeca}
               onChange={(e) => setQPeca(e.target.value)}
             />
             <button
               type="button"
-              onClick={buscarPecaGlobus}
+              onClick={buscarPecaLocal}
               disabled={buscandoPeca}
               className="shrink-0 rounded-lg border border-line px-3 text-sm text-cyan disabled:opacity-60"
             >
-              {buscandoPeca ? "…" : "Buscar Globus"}
+              {buscandoPeca ? "…" : "Buscar local"}
+            </button>
+            <button
+              type="button"
+              onClick={buscarPecaAoVivo}
+              disabled={buscandoPeca}
+              className="shrink-0 rounded-lg border border-line px-3 text-sm text-muted disabled:opacity-60"
+            >
+              Buscar no Globus ao vivo
             </button>
           </div>
           {pecaLabel ? <p className="mt-1 text-xs text-green">Selecionada: {pecaLabel}</p> : null}

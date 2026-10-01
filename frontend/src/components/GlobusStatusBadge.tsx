@@ -5,8 +5,22 @@ type GlobusStatus = {
   ok: boolean;
   detail: string;
   configured?: boolean;
-  connected?: boolean;
+  atualizado_em?: string | null;
+  stale?: boolean;
+  falhou?: boolean;
+  source?: string;
 };
+
+function formatAtualizado(iso?: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm} ${hh}:${mi}`;
+}
 
 export default function GlobusStatusBadge() {
   const [status, setStatus] = useState<GlobusStatus | null>(null);
@@ -17,8 +31,9 @@ export default function GlobusStatusBadge() {
       .catch(() =>
         setStatus({
           ok: false,
-          detail: "Globus indisponível (consulta somente leitura).",
-          configured: false,
+          detail: "Espelho Globus indisponivel.",
+          falhou: true,
+          stale: true,
         })
       );
   }, []);
@@ -27,17 +42,23 @@ export default function GlobusStatusBadge() {
     return <span className="text-xs text-muted">Globus: verificando…</span>;
   }
 
+  const alerta = Boolean(status.falhou || status.stale || !status.ok);
+  const quando = formatAtualizado(status.atualizado_em);
+  const label = quando
+    ? `Dados do Globus atualizados em ${quando}`
+    : "Dados do Globus: sync pendente";
+
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${
-        status.ok
-          ? "border-green/40 bg-green/10 text-green"
-          : "border-amber/40 bg-amber/10 text-amber"
+        alerta
+          ? "border-red/40 bg-red/10 text-red"
+          : "border-green/40 bg-green/10 text-green"
       }`}
       title={status.detail}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${status.ok ? "bg-green" : "bg-amber"}`} />
-      Globus {status.ok ? "conectado (leitura)" : "offline"}
+      <span className={`h-1.5 w-1.5 rounded-full ${alerta ? "bg-red" : "bg-green"}`} />
+      {label}
     </span>
   );
 }
@@ -86,6 +107,21 @@ export async function buscarNfsGarantiaGlobus(opts: {
   return api(`/api/globus/nfs-garantia/?${q}`);
 }
 
+export async function buscarPecasLocal(q: string): Promise<GlobusPeca[]> {
+  const data = await api<{ results: GlobusPeca[] }>(
+    `/api/globus/local/pecas/?q=${encodeURIComponent(q)}`
+  );
+  return data.results || [];
+}
+
+export async function buscarVeiculosLocal(q: string): Promise<GlobusVeiculo[]> {
+  const data = await api<{ results: GlobusVeiculo[] }>(
+    `/api/globus/local/veiculos/?q=${encodeURIComponent(q)}`
+  );
+  return data.results || [];
+}
+
+/** Busca ao vivo no Oracle (alternativa). */
 export async function buscarPecasGlobus(q: string): Promise<GlobusPeca[]> {
   const data = await api<{ results: GlobusPeca[] }>(
     `/api/globus/pecas/?q=${encodeURIComponent(q)}`

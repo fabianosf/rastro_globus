@@ -12,7 +12,7 @@ O campo `nf_entrada_globo` é **somente texto** e só faz sentido em `procedente
 
 ## Stack
 
-- **Backend:** Django 5 + DRF + SimpleJWT + CORS + SQLite
+- **Backend:** Django 5 + DRF + SimpleJWT + CORS + SQLite (dev) ou MariaDB
 - **Frontend:** Vite + React 18 + TypeScript + Tailwind + React Router
 
 ## Como subir
@@ -36,6 +36,62 @@ python manage.py runserver
 ```
 
 API em `http://localhost:8000/api/`
+
+### Banco MariaDB
+
+Por padrão o app usa **SQLite** (`backend/db.sqlite3`) se `DB_ENGINE` não estiver definido.
+
+Para usar MariaDB:
+
+1. Criar o database com charset utf8mb4:
+
+```sql
+CREATE DATABASE rastroglobus
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+```
+
+2. Configurar ambiente (sem versionar senhas):
+
+```bash
+cd backend
+copy .env.example .env
+# edite .env — exemplo:
+# DB_ENGINE=django.db.backends.mysql
+# DB_HOST=127.0.0.1
+# DB_PORT=3306
+# DB_NAME=rastroglobus
+# DB_USER=...
+# DB_PASSWORD=...
+```
+
+3. Instalar deps (inclui `mysqlclient`), migrar e validar:
+
+```bash
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py seed
+python manage.py check_db
+```
+
+`check_db` deve imprimir `OK` com a versão do MariaDB/MySQL.
+
+### Importar planilha histórica (BASE GERAL)
+
+Totais mensais por fornecedor/empresa (não cria `Garantia`):
+
+```bash
+cd backend
+python manage.py import_planilha caminho\GARANTIA-2026.xlsx --dry-run
+python manage.py import_planilha caminho\GARANTIA-2026.xlsx
+```
+
+- Aba obrigatória: **BASE GERAL**
+- Rodar de novo não duplica (`hash_linha`)
+- Linhas inválidas → `{arquivo}_rejeitados.csv`
+- Nomes parecidos (difflib > 0.85) → `{arquivo}_similares.txt` + stdout
+- API: `GET /api/relatorios/historico/?ano=&empresa=&fornecedor=`
+- Dashboard → aba **Historico (planilha)**
 
 ### Frontend
 
@@ -71,35 +127,48 @@ Garantias **não** podem ser apagadas pela API (protege a timeline).
 
 ## Integração Globus (somente leitura)
 
-O RG **consulta** o Oracle Globus via `conf/` (mesmo padrão corporativo Fernet).  
-**Não grava** nada no Globo e **não movimenta estoque**.
+O Oracle Globus é lido **só pelo job** `sync_globus` (SELECT). As telas usam tabelas espelho locais.  
+**Não grava** nada no Globo e **não movimenta estoque**. Busca de NF por número continua ao vivo (timeout 15s).
 
 Arquivos esperados na pasta `conf/` (raiz do monorepo):
 
 - `chave.key`
 - `erp.dat` (fallback: `erp_BD.dat`, `erp_Old.dat`)
 
-Variáveis opcionais:
+Variáveis (também em `backend/.env.example`):
 
 ```bash
-# pasta conf alternativa
 set RASTROGLOBUS_CONF_DIR=C:\caminho\para\conf
-
-# Instant Client (se thin mode falhar / Native Network Encryption)
 set ORACLE_CLIENT_LIB_DIR=C:\caminho\instantclient
+set GLOBUS_CALL_TIMEOUT_MS=60000
+set GLOBUS_GRUPOS_PECAS=01
 ```
+
+### sync_globus
+
+```bash
+cd backend
+python manage.py sync_globus
+python manage.py sync_globus --full
+python manage.py sync_globus --tipo compras
+```
+
+**Agendador de Tarefas (Windows):**
+
+1. Ação: iniciar programa → `backend\.venv\Scripts\python.exe`
+2. Argumentos: `manage.py sync_globus` (working directory = pasta `backend`)
+3. Disparador horário: a cada **1 hora** (incremental)
+4. Segunda tarefa semanal: `manage.py sync_globus --full`
 
 Endpoints:
 
-- `GET /api/globus/status/` — ping + resumo sem senha
-- `GET /api/globus/nf/?numero=` — espelho de NF (`BGM_NOTAFISCAL`)
-- `GET /api/globus/veiculos/?q=` — frota (`FRT_CADVEICULOS`)
-- `GET /api/globus/pecas/?q=` — materiais (`EST_CADMATERIAL`)
-- `GET /api/globus/movimentos/?peca=&veiculo=&tipo=&data_ini=&data_fim=` — entrada/saída (`EST_MOVTO`)
-- `GET /api/globus/compras/?peca=` — aquisições (padrão relatório compras peças)
-- `GET /api/globus/nfs-garantia/?numero=&peca=` — NFs Globus tipo NEG/NFG (garantia)
-- `GET /api/relatorios/improcedentes-compras/?ano=&peca=` — cruzamento improcedentes RG × compras Globus
-- `POST /api/pecas/ensure/`, `/api/veiculos/ensure/`, `/api/fornecedores/ensure/` — espelho local sob demanda (não grava no Oracle)
+- `GET /api/globus/status/` — ultimo SyncLog por tipo (badge no frontend)
+- `GET /api/globus/local/pecas/?q=` / `local/veiculos/?q=` — espelho local
+- `GET /api/globus/pecas/?q=` / `veiculos/?q=` — Oracle ao vivo (alternativa)
+- `GET /api/globus/nf/?numero=` — NF ao vivo (`BGM_NOTAFISCAL`, 15s)
+- `GET /api/globus/movimentos/...` / `compras/` — ainda podem consultar Oracle
+- `GET /api/relatorios/improcedentes-compras/?ano=&peca=` — improcedentes RG × `CompraGlobus` local
+- `POST /api/pecas/ensure/`, `/api/veiculos/ensure/`, `/api/fornecedores/ensure/` — cadastro RG sob demanda
 
 Na UI: **Nova garantia** busca peça/veículo/NF no Globus; **Movimentos Globus** inclui tipo Compras/aquisição; Relatórios com **Improcedentes × compras Globus**.
 
