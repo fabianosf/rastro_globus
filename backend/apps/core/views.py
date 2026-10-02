@@ -48,6 +48,8 @@ from .serializers import (
     GarantiaCreateSerializer,
     GarantiaDetailSerializer,
     GarantiaListSerializer,
+    GarantiaUpdateSerializer,
+    STATUS_PODE_EDITAR_DANFE,
     NotaFiscalSerializer,
     PecaSerializer,
     RegraPrazoGarantiaSerializer,
@@ -391,13 +393,13 @@ class GarantiaViewSet(viewsets.ModelViewSet):
         "peca", "veiculo", "fornecedor", "nota_remessa", "nota_retorno", "nota_compra", "criado_por"
     ).prefetch_related("eventos", "anexos")
     permission_classes = [IsAuthenticated]
-    # Sem DELETE: EventoGarantia nunca deve ser apagado em cascata via API
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    # DELETE permitido só para status abertos (correção de cadastro).
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_permissions(self):
-        if self.action == "create":
+        if self.action in ("create", "extrair_danfe"):
             return [IsAuthenticated(), CanCreateGarantia()]
-        if self.action in ("partial_update", "update"):
+        if self.action in ("partial_update", "update", "destroy"):
             return [IsAuthenticated(), CanEditGarantia()]
         if self.action == "status":
             return [IsAuthenticated(), CanChangeStatus()]
@@ -410,15 +412,68 @@ class GarantiaViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == "create":
             return GarantiaCreateSerializer
-        if self.action in ("retrieve", "partial_update", "update"):
+        if self.action in ("partial_update", "update"):
+            return GarantiaUpdateSerializer
+        if self.action == "retrieve":
             return GarantiaDetailSerializer
         return GarantiaListSerializer
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        instance = self.get_object()
+        return Response(GarantiaDetailSerializer(instance, context={"request": request}).data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        perfil = getattr(request.user, "perfil", None)
+        if instance.status not in STATUS_PODE_EDITAR_DANFE and perfil != "admin":
+            return Response(
+                {
+                    "detail": (
+                        "Só é possível excluir garantias abertas, enviadas ou em análise. "
+                        "Admin pode excluir casos fechados (limpeza / teste)."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        nota_ids = [
+            nid
+            for nid in (
+                instance.nota_remessa_id,
+                instance.nota_compra_id,
+                instance.nota_retorno_id,
+            )
+            if nid
+        ]
+        instance.delete()
+        for nid in nota_ids:
+            ainda_usada = Garantia.objects.filter(
+                Q(nota_remessa_id=nid) | Q(nota_compra_id=nid) | Q(nota_retorno_id=nid)
+            ).exists()
+            if not ainda_usada:
+                NotaFiscal.objects.filter(pk=nid).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
-        if status_f := params.get("status"):
-            qs = qs.filter(status=status_f)
+        if status_f := (params.get("status") or "").strip():
+            if status_f == "abertos":
+                qs = qs.filter(
+                    status__in=[
+                        Garantia.Status.ABERTA,
+                        Garantia.Status.ENVIADA,
+                        Garantia.Status.EM_ANALISE,
+                    ]
+                )
+            elif "," in status_f:
+                qs = qs.filter(status__in=[s.strip() for s in status_f.split(",") if s.strip()])
+            else:
+                qs = qs.filter(status=status_f)
         if peca := params.get("peca"):
             qs = qs.filter(
                 Q(peca_id=peca)
@@ -459,6 +514,7 @@ class GarantiaViewSet(viewsets.ModelViewSet):
         if q := params.get("q"):
             qs = qs.filter(
                 Q(protocolo__icontains=q)
+                | Q(nota_remessa__numero__icontains=q)
                 | Q(peca__codigo_interno__icontains=q)
                 | Q(peca__descricao__icontains=q)
                 | Q(veiculo__codigo__icontains=q)
@@ -491,7 +547,12 @@ class GarantiaViewSet(viewsets.ModelViewSet):
         compras_map: dict = {}
         codigos = [row.get("peca_codigo") for row in data if row.get("peca_codigo")]
         if codigos:
-            compras_map = compras_por_codigos_local(codigos, limite_por_peca=1)
+            compras_map = compras_por_codigos_local(
+                codigos,
+                data_ini=date.today() - timedelta(days=730),
+                data_fim=date.today(),
+                limite_por_peca=1,
+            )
 
         for row in data:
             codigo = row.get("peca_codigo") or ""
@@ -542,6 +603,23 @@ class GarantiaViewSet(viewsets.ModelViewSet):
             GarantiaDetailSerializer(garantia, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=["post"], url_path="extrair-danfe")
+    def extrair_danfe(self, request):
+        """Lê foto de DANFE (OpenAI Vision) e devolve campos tipados — não grava garantia."""
+        from .danfe_ocr import DanfeOcrError, extrair_danfe_da_imagem
+
+        imagem = request.FILES.get("imagem") or request.FILES.get("arquivo")
+        if not imagem:
+            return Response(
+                {"detail": "Envie a foto da DANFE no campo 'imagem'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            dados = extrair_danfe_da_imagem(imagem, content_type=getattr(imagem, "content_type", None))
+        except DanfeOcrError as exc:
+            return Response({"detail": exc.message}, status=exc.status)
+        return Response(dados)
 
     @action(detail=True, methods=["post"])
     def status(self, request, pk=None):
@@ -779,35 +857,22 @@ class DashboardView(APIView):
         ano = int(request.query_params.get("ano", timezone.now().year))
         payload = _dashboard_payload(ano)
 
-        globus_ok = False
-        globus_detail = ""
-        movimentos: list = []
-        compras: list = []
-        try:
-            from .globus_oracle import GlobusOracleClient
-            from .globus_queries import buscar_compras_recentes, buscar_movimentos
+        # Sem ping/consultas Oracle no caminho crítico — badge usa /api/globus/status/ (espelho).
+        from .globus_sync import sync_status_payload
 
-            client = GlobusOracleClient()
-            if client.configured:
-                ok, detail, _ = client.ping()
-                globus_ok = ok
-                globus_detail = detail
-                if ok:
-                    movimentos = buscar_movimentos(tipo="todos", limite=8)
-                    compras = buscar_compras_recentes(limite=8)
-            else:
-                globus_detail = "conf/ Oracle não configurado. Painel Globus indisponível."
-        except Exception as exc:
-            globus_ok = False
-            globus_detail = f"Painel Globus indisponível: {exc}"
-
+        status_sync = sync_status_payload(ping_oracle=False)
         payload["globus"] = {
-            "ok": globus_ok,
-            "detail": globus_detail,
-            "movimentos_recentes": movimentos,
-            "compras_recentes": compras,
+            "ok": bool(status_sync.get("ok")),
+            "detail": status_sync.get("detail") or "",
+            "movimentos_recentes": [],
+            "compras_recentes": [],
             "readonly": True,
-            "aviso": "Dados Globus em tempo real (somente leitura). Estoque continua no Globo.",
+            "aviso": (
+                "KPIs do MariaDB. Status Globus via espelho/sync (sem consulta Oracle nesta tela)."
+            ),
+            "atualizado_em": status_sync.get("atualizado_em"),
+            "stale": status_sync.get("stale"),
+            "em_andamento": status_sync.get("em_andamento"),
         }
         return Response(payload)
 
@@ -834,6 +899,137 @@ class RankingVeiculosView(APIView):
     def get(self, request):
         ano = int(request.query_params.get("ano", timezone.now().year))
         return Response(_dashboard_payload(ano)["veiculos_alerta"])
+
+
+def _parse_day_param(value: str) -> date | None:
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _garantias_periodo(request, *, default_status: str | None = None) -> tuple:
+    """Retorna (queryset, meta) filtrado por data_ini/data_fim ou ano (+ status opcional)."""
+    params = request.query_params
+    data_ini = (params.get("data_ini") or "").strip()
+    data_fim = (params.get("data_fim") or "").strip()
+    qs = Garantia.objects.select_related("peca", "veiculo", "fornecedor")
+    meta: dict = {}
+
+    if data_ini or data_fim:
+        if data_ini:
+            d0 = _parse_day_param(data_ini)
+            if d0:
+                qs = qs.filter(criado_em__date__gte=d0)
+                meta["data_ini"] = d0.isoformat()
+        if data_fim:
+            d1 = _parse_day_param(data_fim)
+            if d1:
+                qs = qs.filter(criado_em__date__lte=d1)
+                meta["data_fim"] = d1.isoformat()
+        meta["modo"] = "periodo"
+    else:
+        ano = int(params.get("ano", timezone.now().year))
+        qs = qs.filter(criado_em__year=ano)
+        meta["ano"] = ano
+        meta["modo"] = "ano"
+
+    if "status" in params:
+        status_f = (params.get("status") or "").strip()
+    elif default_status is not None:
+        status_f = default_status
+    else:
+        status_f = ""
+
+    if status_f and status_f not in {"todos", "all"}:
+        if status_f == "abertos":
+            qs = qs.filter(
+                status__in=[
+                    Garantia.Status.ABERTA,
+                    Garantia.Status.ENVIADA,
+                    Garantia.Status.EM_ANALISE,
+                ]
+            )
+        else:
+            qs = qs.filter(status=status_f)
+        meta["status"] = status_f
+    else:
+        meta["status"] = "todos"
+
+    try:
+        limite = max(1, min(50, int(params.get("limite", 15))))
+    except (TypeError, ValueError):
+        limite = 15
+    meta["limite"] = limite
+    return qs, meta
+
+
+class RelatorioRankingsView(APIView):
+    """Top CARROs e top peças cadastradas no RG (MariaDB)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Default: só abertos (alinha com Minhas NFs; esconde improcedentes antigos).
+        qs, meta = _garantias_periodo(request, default_status="abertos")
+        limite = meta["limite"]
+
+        total = qs.count()
+        valor_total = qs.aggregate(t=Sum("valor_peca"))["t"] or Decimal("0")
+        abertos_set = {
+            Garantia.Status.ABERTA,
+            Garantia.Status.ENVIADA,
+            Garantia.Status.EM_ANALISE,
+        }
+        abertos = qs.filter(status__in=abertos_set).count()
+        enviada = qs.filter(status=Garantia.Status.ENVIADA).count()
+
+        por_status = [
+            {"status": row["status"], "total": row["total"]}
+            for row in qs.values("status").annotate(total=Count("id")).order_by("-total")
+        ]
+
+        pecas = [
+            {
+                "peca_id": r["peca_id"],
+                "codigo": r["peca__codigo_interno"],
+                "descricao": r["peca__descricao"],
+                "total": r["total"],
+                "valor": str(r["valor"] or 0),
+            }
+            for r in qs.values("peca_id", "peca__codigo_interno", "peca__descricao")
+            .annotate(total=Count("id"), valor=Sum("valor_peca"))
+            .order_by("-total")[:limite]
+        ]
+
+        veiculos = [
+            {
+                "veiculo_id": r["veiculo_id"],
+                "codigo": r["veiculo__codigo"],
+                "casa": r["veiculo__casa"] or "",
+                "total": r["total"],
+                "valor": str(r["valor"] or 0),
+            }
+            for r in qs.values("veiculo_id", "veiculo__codigo", "veiculo__casa")
+            .annotate(total=Count("id"), valor=Sum("valor_peca"))
+            .order_by("-total")[:limite]
+        ]
+
+        return Response(
+            {
+                **meta,
+                "kpis": {
+                    "total": total,
+                    "abertos": abertos,
+                    "enviada": enviada,
+                    "valor_total": str(valor_total),
+                },
+                "por_status": por_status,
+                "pecas": pecas,
+                "veiculos": veiculos,
+                "total_garantias": total,
+            }
+        )
 
 
 MERGE_HISTORICO_APP_FROM = date(2026, 10, 1)
@@ -1050,15 +1246,23 @@ class ExportCsvView(APIView):
 
 
 class GlobusStatusView(APIView):
-    """Status do espelho local (SyncLog). Oracle e lido so pelo job sync_globus."""
+    """Status do espelho (SyncLog). Default sem ping Oracle; use ?ping=1 para teste ao vivo."""
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from .globus_sync import sync_status_payload
 
-        # Sempre 200: ok/stale/falhou vão no body (badge UI). 503 só polui o console.
-        return Response(sync_status_payload(), status=status.HTTP_200_OK)
+        ping = (request.query_params.get("ping") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        # Sempre 200: ok/stale/falhou vão no body (badge UI).
+        return Response(
+            sync_status_payload(ping_oracle=ping),
+            status=status.HTTP_200_OK,
+        )
 
 
 class GlobusNfView(APIView):
@@ -1069,8 +1273,13 @@ class GlobusNfView(APIView):
         from .globus_queries import buscar_nfs
 
         numero = request.query_params.get("numero", "").strip()
+        meses_raw = request.query_params.get("meses", "24")
         try:
-            rows = buscar_nfs(numero)
+            meses = int(meses_raw)
+        except (TypeError, ValueError):
+            meses = 24
+        try:
+            rows = buscar_nfs(numero, meses=meses)
         except GlobusOracleError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
@@ -1078,7 +1287,7 @@ class GlobusNfView(APIView):
                 {"detail": f"Falha ao consultar NF no Globus: {exc}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        return Response({"count": len(rows), "results": rows})
+        return Response({"count": len(rows), "results": rows, "meses": meses})
 
 
 class GlobusNfsGarantiaView(APIView):
@@ -1266,8 +1475,8 @@ class ImprocedentesComprasView(APIView):
         globus_detail = status_sync.get("detail") or ""
         compras_map = compras_por_codigos_local(
             codigos,
-            data_ini=date(ano - 5, 1, 1),
-            data_fim=date(ano, 12, 31),
+            data_ini=date.today() - timedelta(days=730),
+            data_fim=date.today(),
             limite_por_peca=5,
         )
 

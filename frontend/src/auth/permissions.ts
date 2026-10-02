@@ -10,6 +10,13 @@ export function canEditGarantia(perfil?: string | null): boolean {
   return ["oficina", "compras", "manutencao", "admin"].includes(perfil || "");
 }
 
+/** Excluir de verdade: abertos para quem edita; admin também pode apagar fechados. */
+export function canDeleteGarantia(perfil?: string | null, status?: string | null): boolean {
+  if (!canEditGarantia(perfil)) return false;
+  if (perfil === "admin") return Boolean(status);
+  return ["aberta", "enviada", "em_analise"].includes(status || "");
+}
+
 export function canAnexar(perfil?: string | null): boolean {
   return ["oficina", "compras", "manutencao", "admin"].includes(perfil || "");
 }

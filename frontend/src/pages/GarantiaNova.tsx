@@ -9,8 +9,10 @@ import GlobusStatusBadge, {
   buscarPecasLocal,
   buscarVeiculosGlobus,
   buscarVeiculosLocal,
+  GlobusNf,
   GlobusPeca,
   GlobusVeiculo,
+  labelNfGlobus,
 } from "../components/GlobusStatusBadge";
 
 type Option = { id: number; label: string };
@@ -24,9 +26,9 @@ function useDebounced(value: string, ms: number) {
   return v;
 }
 
-function labelVeiculo(v: GlobusVeiculo) {
-  const pref = v.prefixo || v.descricao || "";
-  const cod = v.codigo_veic_globus || v.codigo;
+function labelVeiculo(v: GlobusVeiculo): string {
+  const pref = String(v.prefixo || v.descricao || "");
+  const cod = String(v.codigo_veic_globus ?? v.codigo ?? "");
   const base = pref && pref !== cod ? `${pref} (${cod})` : cod;
   return v.placa ? `${base} · ${v.placa}` : base;
 }
@@ -63,6 +65,7 @@ export default function GarantiaNova() {
   const [buscandoPeca, setBuscandoPeca] = useState(false);
   const [msgGlobus, setMsgGlobus] = useState("");
   const [globusOffline, setGlobusOffline] = useState(false);
+  const [hitsNfCompra, setHitsNfCompra] = useState<GlobusNf[]>([]);
   const allowed = canCreateGarantia(user?.perfil);
 
   const qVeiculoDebounced = useDebounced(qVeiculo.trim(), 350);
@@ -219,7 +222,7 @@ export default function GarantiaNova() {
 
   async function escolherVeiculo(v: GlobusVeiculo) {
     setError("");
-    const codigo = (v.codigo_veic_globus || v.codigo || "").trim();
+    const codigo = String(v.codigo_veic_globus ?? v.codigo ?? "").trim();
     if (!codigo) {
       setError("Veiculo sem codigo Globus.");
       return;
@@ -234,7 +237,7 @@ export default function GarantiaNova() {
         },
       });
       setVeiculo(String(local.id));
-      setVeiculoLabel(labelVeiculo({ ...v, codigo: local.codigo }));
+      setVeiculoLabel(labelVeiculo({ ...v, codigo: String(local.codigo) }));
       setHitsVeiculo([]);
       setQVeiculo("");
       setMsgGlobus(`Veiculo ${local.codigo} espelhado no RastroGlobus (somente leitura Globus).`);
@@ -266,6 +269,49 @@ export default function GarantiaNova() {
     }
   }
 
+  async function aplicarNfCompra(nf: GlobusNf) {
+    setHitsNfCompra([]);
+    setNfCompra(nf.numero || nfCompra);
+    if (nf.valor) setValor(String(nf.valor));
+    setGlobusOffline(false);
+
+    const nomeForn = nf.fornecedor_nome || "";
+    const codForn = nf.codigo_fornecedor != null ? String(nf.codigo_fornecedor) : "";
+    if (nomeForn || codForn) {
+      try {
+        const forn = await api<{ id: number; nome_fantasia: string; razao_social: string }>(
+          "/api/fornecedores/ensure/",
+          {
+            method: "POST",
+            body: {
+              codigo_externo: codForn,
+              nome_fantasia: nomeForn || `Fornecedor ${codForn}`,
+              razao_social: nomeForn || `Fornecedor Globus ${codForn}`,
+            },
+          }
+        );
+        setFornecedor(String(forn.id));
+        setQFornecedor(forn.nome_fantasia || forn.razao_social || "");
+        setFornecedores((prev) => {
+          if (prev.some((x) => x.id === forn.id)) return prev;
+          return [
+            ...prev,
+            { id: forn.id, label: forn.nome_fantasia || forn.razao_social },
+          ];
+        });
+      } catch {
+        /* fornecedor opcional; NF e valor ja preenchidos */
+      }
+    }
+
+    setMsgGlobus(
+      `Globus (24 meses): NF ${nf.numero}${nf.serie ? ` serie ${nf.serie}` : ""}` +
+        (nf.data_emissao ? ` · ${String(nf.data_emissao).slice(0, 10)}` : "") +
+        (nomeForn ? ` · ${nomeForn}` : "") +
+        " (somente leitura)."
+    );
+  }
+
   async function buscarNfCompra() {
     if (!nfCompra.trim()) {
       setError("Informe o numero da NF compra para buscar no Globus.");
@@ -273,52 +319,23 @@ export default function GarantiaNova() {
     }
     setError("");
     setMsgGlobus("");
+    setHitsNfCompra([]);
     setBuscandoNf(true);
     try {
-      const rows = await buscarNfGlobus(nfCompra.trim());
+      const rows = await buscarNfGlobus(nfCompra.trim(), { meses: 24 });
       if (!rows.length) {
-        setMsgGlobus("NF nao encontrada no Globus (somente leitura).");
+        setMsgGlobus(
+          "NF nao encontrada nos ultimos 24 meses no Globus. Digite os dados ou amplie a busca manualmente."
+        );
         return;
       }
-      const nf = rows[0];
-      setNfCompra(nf.numero || nfCompra);
-      if (nf.valor) setValor(String(nf.valor));
-      setGlobusOffline(false);
-
-      const nomeForn = nf.fornecedor_nome || "";
-      const codForn = nf.codigo_fornecedor != null ? String(nf.codigo_fornecedor) : "";
-      if (nomeForn || codForn) {
-        try {
-          const forn = await api<{ id: number; nome_fantasia: string; razao_social: string }>(
-            "/api/fornecedores/ensure/",
-            {
-              method: "POST",
-              body: {
-                codigo_externo: codForn,
-                nome_fantasia: nomeForn || `Fornecedor ${codForn}`,
-                razao_social: nomeForn || `Fornecedor Globus ${codForn}`,
-              },
-            }
-          );
-          setFornecedor(String(forn.id));
-          setQFornecedor(forn.nome_fantasia || forn.razao_social || "");
-          setFornecedores((prev) => {
-            if (prev.some((x) => x.id === forn.id)) return prev;
-            return [
-              ...prev,
-              { id: forn.id, label: forn.nome_fantasia || forn.razao_social },
-            ];
-          });
-        } catch {
-          /* fornecedor opcional; NF e valor ja preenchidos */
-        }
+      if (rows.length === 1) {
+        await aplicarNfCompra(rows[0]);
+        return;
       }
-
+      setHitsNfCompra(rows);
       setMsgGlobus(
-        `Globus: NF ${nf.numero}${nf.serie ? ` serie ${nf.serie}` : ""}` +
-          (nf.data_emissao ? ` · ${String(nf.data_emissao).slice(0, 10)}` : "") +
-          (nomeForn ? ` · ${nomeForn}` : "") +
-          " (espelho — sem movimentar estoque)."
+        `${rows.length} NFs nos ultimos 24 meses. Selecione a correta (nao preenchido automaticamente).`
       );
     } catch (e) {
       setGlobusOffline(true);
@@ -388,8 +405,7 @@ export default function GarantiaNova() {
       <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-line bg-panel p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted">
-            Digite para buscar no espelho local (Enter ou aguarde). Oracle so no botao ao vivo. Nao
-            movimenta estoque.
+            Formulário completo: digite e salve no RG. Globus é opcional (bloco abaixo).
           </p>
           <GlobusStatusBadge />
         </div>
@@ -418,15 +434,20 @@ export default function GarantiaNova() {
             >
               {buscandoVeiculo ? "…" : "Buscar local"}
             </button>
+          </div>
+          <details className="mt-2 rounded-lg border border-line bg-bg/40 px-3 py-2 text-sm">
+            <summary className="cursor-pointer text-xs text-muted hover:text-ink">
+              Buscar no Globus (opcional)
+            </summary>
             <button
               type="button"
               onClick={() => void buscarVeiculoAoVivo()}
               disabled={buscandoVeiculo}
-              className="shrink-0 rounded-lg border border-line px-3 text-sm text-muted disabled:opacity-60"
+              className="mt-2 rounded-lg border border-line px-3 py-1.5 text-xs text-muted disabled:opacity-60"
             >
-              Buscar no Globus ao vivo
+              Buscar veículo no Globus ao vivo
             </button>
-          </div>
+          </details>
           {veiculoLabel ? (
             <p className="mt-1 text-xs text-green">Selecionado: {veiculoLabel}</p>
           ) : null}
@@ -486,15 +507,20 @@ export default function GarantiaNova() {
             >
               {buscandoPeca ? "…" : "Buscar local"}
             </button>
+          </div>
+          <details className="mt-2 rounded-lg border border-line bg-bg/40 px-3 py-2 text-sm">
+            <summary className="cursor-pointer text-xs text-muted hover:text-ink">
+              Buscar no Globus (opcional)
+            </summary>
             <button
               type="button"
               onClick={() => void buscarPecaAoVivo()}
               disabled={buscandoPeca}
-              className="shrink-0 rounded-lg border border-line px-3 text-sm text-muted disabled:opacity-60"
+              className="mt-2 rounded-lg border border-line px-3 py-1.5 text-xs text-muted disabled:opacity-60"
             >
-              Buscar no Globus ao vivo
+              Buscar peça no Globus ao vivo
             </button>
-          </div>
+          </details>
           {pecaLabel ? <p className="mt-1 text-xs text-green">Selecionada: {pecaLabel}</p> : null}
           {hitsPeca.length ? (
             <ul className="mt-2 max-h-40 overflow-auto rounded-lg border border-line text-sm">
@@ -559,9 +585,7 @@ export default function GarantiaNova() {
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-muted">
-            Digite para filtrar. Preenchido automaticamente ao buscar a NF compra no Globus.
-          </p>
+          <p className="mt-1 text-xs text-muted">Digite para filtrar por nome.</p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -599,24 +623,45 @@ export default function GarantiaNova() {
             </p>
           </div>
           <div>
-            <label className="mb-1 block text-sm text-muted">NF compra (opcional / Globus)</label>
-            <div className="flex gap-2">
-              <input
-                className={field}
-                value={nfCompra}
-                onChange={(e) => setNfCompra(e.target.value)}
-                onKeyDown={(e) => onSearchKeyDown(e, () => buscarNfCompra())}
-              />
-              <button
-                type="button"
-                onClick={() => void buscarNfCompra()}
-                disabled={buscandoNf}
-                className="shrink-0 rounded-lg border border-line px-3 text-sm text-cyan disabled:opacity-60"
-              >
-                {buscandoNf ? "…" : "Buscar Globus"}
-              </button>
-            </div>
-            {msgGlobus ? <p className="mt-1 text-xs text-muted">{msgGlobus}</p> : null}
+            <label className="mb-1 block text-sm text-muted">NF compra (opcional)</label>
+            <input
+              className={field}
+              value={nfCompra}
+              onChange={(e) => setNfCompra(e.target.value)}
+              placeholder="Digite o número"
+            />
+            <details className="mt-2 rounded-lg border border-line bg-bg/40 px-3 py-2 text-sm">
+              <summary className="cursor-pointer text-xs text-muted hover:text-ink">
+                Buscar no Globus (opcional)
+              </summary>
+              <div className="mt-2 space-y-2 border-t border-line pt-2">
+                <p className="text-xs text-muted">Últimos 24 meses · somente leitura.</p>
+                <button
+                  type="button"
+                  onClick={() => void buscarNfCompra()}
+                  disabled={buscandoNf || !nfCompra.trim()}
+                  className="rounded-lg border border-line px-3 py-1.5 text-xs text-cyan disabled:opacity-60"
+                >
+                  {buscandoNf ? "…" : "Buscar NF compra no Globus"}
+                </button>
+                {msgGlobus ? <p className="text-xs text-muted">{msgGlobus}</p> : null}
+                {hitsNfCompra.length ? (
+                  <ul className="max-h-40 overflow-auto rounded-lg border border-line bg-bg text-sm">
+                    {hitsNfCompra.map((nf, idx) => (
+                      <li key={`${nf.cod_int_nf ?? nf.numero}-${nf.serie}-${idx}`}>
+                        <button
+                          type="button"
+                          className="w-full px-3 py-2 text-left hover:bg-cyan/10"
+                          onClick={() => void aplicarNfCompra(nf)}
+                        >
+                          {labelNfGlobus(nf)}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </details>
           </div>
           <div>
             <label className="mb-1 block text-sm text-muted">Km</label>

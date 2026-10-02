@@ -34,3 +34,55 @@ textarea,
 button {
   font: inherit;
 }
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  #relatorio-print {
+    color: #111;
+  }
+
+  #relatorio-print .text-muted,
+  #relatorio-print .text-cyan,
+  #relatorio-print .text-green,
+  #relatorio-print .text-amber,
+  #relatorio-print .text-red {
+    color: #111 !important;
+  }
+
+  #relatorio-print .border-line,
+  #relatorio-print .border-amber\/40 {
+    border-color: #ccc !important;
+  }
+
+  #relatorio-print .bg-panel,
+  #relatorio-print .bg-panel\/80,
+  #relatorio-print .bg-amber\/10 {
+    background: #fff !important;
+  }
+
+  #relatorio-print a {
+    color: #111 !important;
+    text-decoration: none;
+  }
+
+  #relatorio-print .h-72,
+  #relatorio-print .h-80 {
+    break-inside: avoid;
+  }
+}

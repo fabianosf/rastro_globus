@@ -188,6 +188,9 @@ class GarantiaDetailSerializer(serializers.ModelSerializer):
     veiculo_codigo = serializers.CharField(source="veiculo.codigo", read_only=True)
     fornecedor_nome = serializers.SerializerMethodField()
     nf_remessa = serializers.SerializerMethodField()
+    nf_remessa_serie = serializers.SerializerMethodField()
+    nf_remessa_data = serializers.SerializerMethodField()
+    chave_nfe_remessa = serializers.SerializerMethodField()
     nf_retorno = serializers.SerializerMethodField()
     nf_compra = serializers.SerializerMethodField()
     dias_aberta = serializers.SerializerMethodField()
@@ -223,6 +226,9 @@ class GarantiaDetailSerializer(serializers.ModelSerializer):
             "requisicao_atual",
             "nota_remessa",
             "nf_remessa",
+            "nf_remessa_serie",
+            "nf_remessa_data",
+            "chave_nfe_remessa",
             "data_envio",
             "nota_retorno",
             "nf_retorno",
@@ -261,6 +267,7 @@ class GarantiaDetailSerializer(serializers.ModelSerializer):
             "data_fim_garantia",
             "prazo_garantia_dias",
             "compra_globus",
+            "status",
         )
 
     def get_peca_nome(self, obj):
@@ -271,6 +278,19 @@ class GarantiaDetailSerializer(serializers.ModelSerializer):
 
     def get_nf_remessa(self, obj):
         return obj.nota_remessa.numero if obj.nota_remessa_id else ""
+
+    def get_nf_remessa_serie(self, obj):
+        return obj.nota_remessa.serie if obj.nota_remessa_id else ""
+
+    def get_nf_remessa_data(self, obj):
+        if obj.nota_remessa_id and obj.nota_remessa.data_emissao:
+            return obj.nota_remessa.data_emissao.isoformat()
+        if obj.data_envio:
+            return obj.data_envio.isoformat()
+        return ""
+
+    def get_chave_nfe_remessa(self, obj):
+        return obj.nota_remessa.chave_nfe if obj.nota_remessa_id else ""
 
     def get_nf_retorno(self, obj):
         return obj.nota_retorno.numero if obj.nota_retorno_id else ""
@@ -294,12 +314,177 @@ class GarantiaDetailSerializer(serializers.ModelSerializer):
         return _dias_garantia_restantes(obj)
 
 
+STATUS_PODE_EDITAR_DANFE = {
+    Garantia.Status.ABERTA,
+    Garantia.Status.ENVIADA,
+    Garantia.Status.EM_ANALISE,
+}
+
+
+class GarantiaUpdateSerializer(serializers.ModelSerializer):
+    """Atualiza dados da DANFE / cadastro (casos ainda abertos)."""
+
+    nf_remessa_numero = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    nf_remessa_serie = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    nf_remessa_data = serializers.DateField(required=False, allow_null=True, write_only=True)
+    chave_nfe_remessa = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    nf_compra_numero = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    nf_compra_data = serializers.DateField(required=False, allow_null=True, write_only=True)
+
+    class Meta:
+        model = Garantia
+        fields = (
+            "peca",
+            "veiculo",
+            "fornecedor",
+            "valor_peca",
+            "observacoes",
+            "laudo_resumo",
+            "nf_venda_fornecedor",
+            "nf_venda_data",
+            "data_aplicacao",
+            "nf_remessa_numero",
+            "nf_remessa_serie",
+            "nf_remessa_data",
+            "chave_nfe_remessa",
+            "nf_compra_numero",
+            "nf_compra_data",
+            "km_aplicacao",
+            "requisicao_anterior",
+            "requisicao_atual",
+        )
+
+    def validate(self, attrs):
+        garantia = self.instance
+        if garantia.status not in STATUS_PODE_EDITAR_DANFE:
+            raise serializers.ValidationError(
+                "Só é possível editar garantias abertas, enviadas ou em análise."
+            )
+        return attrs
+
+    def update(self, instance, validated_data):
+        status_antes = instance.status
+        nf_remessa_numero = validated_data.pop("nf_remessa_numero", None)
+        nf_remessa_serie = validated_data.pop("nf_remessa_serie", None)
+        nf_remessa_data = validated_data.pop("nf_remessa_data", None)
+        chave_nfe_remessa = validated_data.pop("chave_nfe_remessa", None)
+        nf_compra_numero = validated_data.pop("nf_compra_numero", None)
+        nf_compra_data = validated_data.pop("nf_compra_data", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if "data_aplicacao" in validated_data and instance.data_aplicacao:
+            prazo = instance.prazo_garantia_dias or resolver_prazo_dias(
+                peca=instance.peca,
+                fornecedor=instance.fornecedor,
+                tipo_servico=RegraPrazoGarantia.TipoServico.EXTERNO,
+            )
+            instance.prazo_garantia_dias = prazo
+            instance.data_fim_garantia = calcular_data_fim_garantia(
+                instance.data_aplicacao, prazo
+            )
+
+        if nf_compra_numero is not None:
+            numero = (nf_compra_numero or "").strip()
+            if numero:
+                data_emissao = (
+                    nf_compra_data
+                    or instance.nf_venda_data
+                    or instance.data_compra
+                    or timezone.localdate()
+                )
+                nota, _ = NotaFiscal.objects.get_or_create(
+                    numero=numero,
+                    serie="",
+                    tipo=NotaFiscal.Tipo.COMPRA,
+                    defaults={
+                        "data_emissao": data_emissao,
+                        "fornecedor": instance.fornecedor,
+                        "valor": instance.valor_peca,
+                    },
+                )
+                instance.nota_compra = nota
+                if not instance.data_compra:
+                    instance.data_compra = data_emissao
+                if not instance.nf_venda_fornecedor:
+                    instance.nf_venda_fornecedor = numero
+
+        if nf_remessa_numero is not None:
+            numero = (nf_remessa_numero or "").strip()
+            serie = (
+                (nf_remessa_serie or "").strip()
+                if nf_remessa_serie is not None
+                else (instance.nota_remessa.serie if instance.nota_remessa_id else "")
+            )
+            if numero:
+                data_rem = (
+                    nf_remessa_data
+                    or instance.data_envio
+                    or timezone.localdate()
+                )
+                chave = ""
+                if chave_nfe_remessa is not None:
+                    chave = "".join(ch for ch in (chave_nfe_remessa or "") if ch.isdigit())[:44]
+                elif instance.nota_remessa_id:
+                    chave = instance.nota_remessa.chave_nfe or ""
+
+                nota_r, created_nota = NotaFiscal.objects.get_or_create(
+                    numero=numero,
+                    serie=serie,
+                    tipo=NotaFiscal.Tipo.REMESSA,
+                    defaults={
+                        "data_emissao": data_rem,
+                        "fornecedor": instance.fornecedor,
+                        "valor": instance.valor_peca,
+                        "chave_nfe": chave,
+                        "observacao": "Remessa DANFE / garantia",
+                    },
+                )
+                if not created_nota:
+                    updates = []
+                    if nf_remessa_data:
+                        nota_r.data_emissao = data_rem
+                        updates.append("data_emissao")
+                    if chave and nota_r.chave_nfe != chave:
+                        nota_r.chave_nfe = chave
+                        updates.append("chave_nfe")
+                    if instance.valor_peca is not None and nota_r.valor != instance.valor_peca:
+                        nota_r.valor = instance.valor_peca
+                        updates.append("valor")
+                    if instance.fornecedor_id and nota_r.fornecedor_id != instance.fornecedor_id:
+                        nota_r.fornecedor = instance.fornecedor
+                        updates.append("fornecedor")
+                    if updates:
+                        nota_r.save(update_fields=updates)
+                instance.nota_remessa = nota_r
+                instance.data_envio = data_rem
+                if instance.status == Garantia.Status.ABERTA:
+                    instance.status = Garantia.Status.ENVIADA
+
+        instance.save()
+
+        user = self.context["request"].user
+        EventoGarantia.objects.create(
+            garantia=instance,
+            usuario=user,
+            status_anterior=status_antes,
+            status_novo=instance.status,
+            descricao="Dados da DANFE / cadastro atualizados.",
+        )
+        return instance
+
+
 class GarantiaCreateSerializer(serializers.ModelSerializer):
     nf_compra_numero = serializers.CharField(required=False, allow_blank=True, write_only=True)
     nf_compra_data = serializers.DateField(required=False, allow_null=True, write_only=True)
     nf_venda_fornecedor = serializers.CharField(required=True, allow_blank=False)
     nf_venda_data = serializers.DateField(required=True)
     data_aplicacao = serializers.DateField(required=True)
+    nf_remessa_numero = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    nf_remessa_serie = serializers.CharField(required=False, allow_blank=True, default="", write_only=True)
+    nf_remessa_data = serializers.DateField(required=False, allow_null=True, write_only=True)
+    chave_nfe_remessa = serializers.CharField(required=False, allow_blank=True, default="", write_only=True)
     tipo_servico = serializers.ChoiceField(
         choices=RegraPrazoGarantia.TipoServico.choices,
         required=False,
@@ -330,6 +515,10 @@ class GarantiaCreateSerializer(serializers.ModelSerializer):
             "nf_venda_fornecedor",
             "nf_venda_data",
             "data_aplicacao",
+            "nf_remessa_numero",
+            "nf_remessa_serie",
+            "nf_remessa_data",
+            "chave_nfe_remessa",
             "tipo_servico",
             "alerta_origem",
         )
@@ -344,6 +533,11 @@ class GarantiaCreateSerializer(serializers.ModelSerializer):
         ensure_regra_padrao_externo()
         nf_numero = validated_data.pop("nf_compra_numero", "").strip()
         nf_data = validated_data.pop("nf_compra_data", None)
+        nf_remessa_numero = (validated_data.pop("nf_remessa_numero", "") or "").strip()
+        nf_remessa_serie = (validated_data.pop("nf_remessa_serie", "") or "").strip()
+        nf_remessa_data = validated_data.pop("nf_remessa_data", None)
+        chave_nfe_remessa = (validated_data.pop("chave_nfe_remessa", "") or "").strip()
+        chave_nfe_remessa = "".join(ch for ch in chave_nfe_remessa if ch.isdigit())[:44]
         tipo_servico = validated_data.pop(
             "tipo_servico", RegraPrazoGarantia.TipoServico.EXTERNO
         )
@@ -405,6 +599,49 @@ class GarantiaCreateSerializer(serializers.ModelSerializer):
             status_novo=Garantia.Status.ABERTA,
             descricao="Garantia aberta / laudo gerado.",
         )
+
+        if nf_remessa_numero:
+            data_rem = nf_remessa_data or timezone.localdate()
+            nota_r, created_nota = NotaFiscal.objects.get_or_create(
+                numero=nf_remessa_numero,
+                serie=nf_remessa_serie,
+                tipo=NotaFiscal.Tipo.REMESSA,
+                defaults={
+                    "data_emissao": data_rem,
+                    "fornecedor": garantia.fornecedor,
+                    "valor": garantia.valor_peca,
+                    "chave_nfe": chave_nfe_remessa,
+                    "observacao": "Remessa DANFE / garantia",
+                },
+            )
+            if not created_nota:
+                updates = []
+                if chave_nfe_remessa and not nota_r.chave_nfe:
+                    nota_r.chave_nfe = chave_nfe_remessa
+                    updates.append("chave_nfe")
+                if garantia.valor_peca is not None and nota_r.valor is None:
+                    nota_r.valor = garantia.valor_peca
+                    updates.append("valor")
+                if updates:
+                    nota_r.save(update_fields=updates)
+            garantia.nota_remessa = nota_r
+            garantia.data_envio = data_rem
+            garantia.status = Garantia.Status.ENVIADA
+            garantia.save(
+                update_fields=["nota_remessa", "data_envio", "status", "atualizado_em"]
+            )
+            EventoGarantia.objects.create(
+                garantia=garantia,
+                usuario=user,
+                status_anterior=Garantia.Status.ABERTA,
+                status_novo=Garantia.Status.ENVIADA,
+                descricao=(
+                    f"Remessa DANFE NF {nf_remessa_numero}"
+                    + (f" serie {nf_remessa_serie}" if nf_remessa_serie else "")
+                    + " vinculada na abertura."
+                ),
+            )
+
         return garantia
 
 

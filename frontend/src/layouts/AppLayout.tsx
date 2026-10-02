@@ -5,54 +5,70 @@ import { canCreateGarantia } from "../auth/permissions";
 export default function AppLayout({ title }: { title?: string }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-
-  const links = [
-    { to: "/", label: "Dashboard", end: true },
-    { to: "/garantias", label: "Garantias" },
-    ...(canCreateGarantia(user?.perfil)
-      ? [{ to: "/garantias/nova", label: "Nova garantia" }]
-      : []),
-  ];
+  const canNova = canCreateGarantia(user?.perfil);
 
   return (
     <div className="flex min-h-screen bg-bg">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-panel">
+      <aside className="no-print flex w-60 shrink-0 flex-col border-r border-line bg-panel">
         <div className="flex items-center gap-3 border-b border-line px-4 py-5">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan text-sm font-bold text-bg">
             RG
           </div>
           <div>
             <p className="font-semibold text-text">RastroGlobus</p>
-            <p className="text-xs text-muted">Rastro da garantia</p>
+            <p className="text-xs text-muted">NFs que você cadastrou</p>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-3">
-          {links.map((l) => (
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              `rounded-lg px-3 py-2 text-sm transition ${
+                isActive
+                  ? "bg-cyan/15 text-cyan"
+                  : "text-muted hover:bg-line/40 hover:text-text"
+              }`
+            }
+          >
+            Minhas NFs
+          </NavLink>
+          {canNova ? (
             <NavLink
-              key={l.to}
-              to={l.to}
-              end={"end" in l ? l.end : undefined}
+              to="/garantias/nova-danfe"
               className={({ isActive }) =>
-                `flex items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
+                `rounded-lg px-3 py-2 text-sm transition ${
                   isActive
                     ? "bg-cyan/15 text-cyan"
                     : "text-muted hover:bg-line/40 hover:text-text"
                 }`
               }
             >
-              <span>{l.label}</span>
+              Registrar DANFE
             </NavLink>
-          ))}
+          ) : null}
+          <NavLink
+            to="/relatorios"
+            className={({ isActive }) =>
+              `rounded-lg px-3 py-2 text-sm transition ${
+                isActive
+                  ? "bg-cyan/15 text-cyan"
+                  : "text-muted hover:bg-line/40 hover:text-text"
+              }`
+            }
+          >
+            Relatórios
+          </NavLink>
         </nav>
         <div className="border-t border-line p-4 text-xs text-muted">
-          Globo controla estoque.
+          Cadastre a DANFE, edite ou exclua.
           <br />
-          RG controla o rastro.
+          Sem histórico da planilha.
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-line bg-panel/80 px-6 py-4">
+        <header className="no-print flex items-center justify-between border-b border-line bg-panel/80 px-6 py-4">
           <h1 className="text-lg font-semibold text-text">{title || "RastroGlobus"}</h1>
           <div className="flex items-center gap-3 text-sm">
             <span className="text-muted">

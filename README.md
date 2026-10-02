@@ -15,9 +15,23 @@ O campo `nf_entrada_globo` é **somente texto** e só faz sentido em `procedente
 - **Backend:** Django 5 + DRF + SimpleJWT + CORS + SQLite (dev) ou MariaDB
 - **Frontend:** Vite + React 18 + TypeScript + Tailwind + React Router
 
-## Como subir
+## Como subir (Docker — servidor)
 
-### Backend
+Na raiz do monorepo:
+
+```bash
+cp .env.example .env
+# edite SECRET_KEY, DB_PASSWORD, DB_ROOT_PASSWORD, ALLOWED_HOSTS
+
+docker compose up -d --build
+docker compose exec backend python manage.py seed   # opcional, 1ª vez
+```
+
+App em `http://srv-af-des01:8888` (nginx → frontend + `/api` + `/media`).
+
+Código no servidor: `/var/www/rastroglobus`.
+
+### Backend (local sem Docker)
 
 ```bash
 cd backend
@@ -63,6 +77,7 @@ copy .env.example .env
 # DB_NAME=rastroglobus
 # DB_USER=...
 # DB_PASSWORD=...
+# DB_ALLOW_LEGACY_MARIADB=1   # so se o servidor for MariaDB < 10.5 (ex.: 10.2)
 ```
 
 3. Instalar deps (inclui `mysqlclient`), migrar e validar:

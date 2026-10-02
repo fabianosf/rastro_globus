@@ -1,13 +1,12 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import AppLayout from "./layouts/AppLayout";
-import AlertasReincidencia from "./pages/AlertasReincidencia";
-import Dashboard from "./pages/Dashboard";
+import GarantiaDanfe from "./pages/GarantiaDanfe";
 import GarantiaFicha from "./pages/GarantiaFicha";
 import GarantiaNova from "./pages/GarantiaNova";
 import GarantiasList from "./pages/GarantiasList";
 import Login from "./pages/Login";
-import RegrasPrazo from "./pages/RegrasPrazo";
+import RelatorioRankings from "./pages/RelatorioRankings";
 
 function Protected() {
   const { isAuthenticated } = useAuth();
@@ -19,12 +18,11 @@ function Protected() {
 }
 
 function titleFor(pathname: string) {
-  if (pathname === "/") return "Dashboard";
-  if (pathname.startsWith("/garantias/nova")) return "Nova garantia";
-  if (pathname.match(/^\/garantias\/\d+/)) return "Ficha da garantia";
-  if (pathname.startsWith("/garantias")) return "Garantias";
-  if (pathname.startsWith("/alertas-reincidencia")) return "Alertas de reincidencia";
-  if (pathname.startsWith("/regras-prazo")) return "Regras de prazo";
+  if (pathname === "/" || pathname === "/garantias") return "Minhas NFs";
+  if (pathname.startsWith("/garantias/nova-danfe")) return "Registrar DANFE";
+  if (pathname.startsWith("/garantias/nova")) return "Formulário completo";
+  if (pathname.match(/^\/garantias\/\d+/)) return "Ficha da NF";
+  if (pathname.startsWith("/relatorios")) return "Relatórios";
   return "RastroGlobus";
 }
 
@@ -40,16 +38,17 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route element={<Protected />}>
           <Route element={<LayoutShell />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/garantias" element={<GarantiasList />} />
+            <Route path="/" element={<GarantiasList />} />
+            <Route path="/garantias" element={<Navigate to="/" replace />} />
+            <Route path="/garantias/nova-danfe" element={<GarantiaDanfe />} />
             <Route path="/garantias/nova" element={<GarantiaNova />} />
             <Route path="/garantias/:id" element={<GarantiaFicha />} />
-            {/* Mantidas por URL (fora do menu MVP) */}
-            <Route path="/alertas-reincidencia" element={<AlertasReincidencia />} />
-            <Route path="/regras-prazo" element={<RegrasPrazo />} />
-            {/* Removidas do MVP: redirect */}
+            <Route path="/relatorios" element={<RelatorioRankings />} />
+            {/* Fora do MVP / Dashboard antigo: redirect */}
+            <Route path="/dashboard" element={<Navigate to="/" replace />} />
+            <Route path="/alertas-reincidencia" element={<Navigate to="/" replace />} />
+            <Route path="/regras-prazo" element={<Navigate to="/" replace />} />
             <Route path="/movimentos-globus" element={<Navigate to="/" replace />} />
-            <Route path="/relatorios" element={<Navigate to="/" replace />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

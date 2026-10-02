@@ -33,8 +33,11 @@ SELECT
 FROM GLOBUS.BGM_NOTAFISCAL N
 LEFT JOIN GLOBUS.BGM_FORNECEDOR F
   ON F.CODIGOFORN = N.CODIGOFORN
-WHERE TRIM(TO_CHAR(N.NUMERONF)) = :numero
-   OR LTRIM(TRIM(TO_CHAR(N.NUMERONF)), '0') = LTRIM(:numero, '0')
+WHERE (
+        TRIM(TO_CHAR(N.NUMERONF)) = :numero
+     OR LTRIM(TRIM(TO_CHAR(N.NUMERONF)), '0') = LTRIM(:numero, '0')
+      )
+  AND N.DATAEMISSAONF >= :data_ini
 ORDER BY N.DATAEMISSAONF DESC
 FETCH FIRST 20 ROWS ONLY
 """
@@ -80,12 +83,22 @@ def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def buscar_nfs(numero: str) -> list[dict[str, Any]]:
+def buscar_nfs(numero: str, *, meses: int = 24) -> list[dict[str, Any]]:
+    """NF por número — só emissões recentes (default 24 meses) para uso operacional."""
     numero = (numero or "").strip()
     if not numero:
         raise GlobusOracleError("Informe o número da NF.")
+    try:
+        meses_n = max(1, min(int(meses or 24), 120))
+    except (TypeError, ValueError):
+        meses_n = 24
+    # ~30.44 dias/mês; suficiente para janela operacional
+    data_ini = date.today() - timedelta(days=int(meses_n * 30.44))
     client = GlobusOracleClient(call_timeout_ms=15000)
-    rows = client.fetch_all(SQL_NF_POR_NUMERO, {"numero": numero})
+    rows = client.fetch_all(
+        SQL_NF_POR_NUMERO,
+        {"numero": numero, "data_ini": data_ini},
+    )
     return [_serialize_row(r) for r in rows]
 
 

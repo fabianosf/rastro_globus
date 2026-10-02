@@ -8,3 +8,5 @@ cryptography
 mysqlclient
 python-dotenv
 openpyxl
+openai
+gunicorn

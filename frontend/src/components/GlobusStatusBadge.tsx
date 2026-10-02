@@ -116,18 +116,38 @@ export type GlobusPeca = {
 };
 
 export type GlobusVeiculo = {
-  codigo: string;
+  codigo: string | number;
   prefixo?: string;
   placa?: string;
   descricao?: string;
-  codigo_veic_globus?: string;
+  codigo_veic_globus?: string | number;
 };
 
-export async function buscarNfGlobus(numero: string): Promise<GlobusNf[]> {
-  const data = await api<{ results: GlobusNf[] }>(
-    `/api/globus/nf/?numero=${encodeURIComponent(numero)}`
-  );
+export async function buscarNfGlobus(
+  numero: string,
+  opts?: { meses?: number }
+): Promise<GlobusNf[]> {
+  const meses = opts?.meses ?? 24;
+  const q = new URLSearchParams({
+    numero,
+    meses: String(meses),
+  });
+  const data = await api<{ results: GlobusNf[] }>(`/api/globus/nf/?${q}`);
   return data.results || [];
+}
+
+export function labelNfGlobus(nf: GlobusNf) {
+  const emissao = nf.data_emissao ? String(nf.data_emissao).slice(0, 10) : "";
+  return [
+    `NF ${nf.numero || "?"}`,
+    nf.serie ? `série ${nf.serie}` : "",
+    emissao,
+    nf.valor != null && nf.valor !== "" ? `R$ ${nf.valor}` : "",
+    nf.fornecedor_nome || "",
+    nf.tipo_doc || "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export async function buscarNfsGarantiaGlobus(opts: {
