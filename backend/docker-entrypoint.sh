@@ -10,7 +10,7 @@ host = os.environ.get("DB_HOST", "db")
 port = int(os.environ.get("DB_PORT", "3306") or "3306")
 user = os.environ.get("DB_USER", "rastro")
 password = os.environ.get("DB_PASSWORD", "")
-name = os.environ.get("DB_NAME", "rastroglobus")
+name = os.environ.get("DB_NAME", "sggi")
 
 for i in range(60):
     try:

@@ -29,7 +29,7 @@ docker compose exec backend python manage.py seed   # opcional, 1ª vez
 
 App em `http://srv-af-des01:8888` (nginx → frontend + `/api` + `/media`).
 
-Código no servidor: `/var/www/rastroglobus`.
+Código no servidor: `/var/www/sggi` (projeto Docker Compose: `sggi`).
 
 ### Backend (local sem Docker)
 
@@ -60,7 +60,7 @@ Para usar MariaDB:
 1. Criar o database com charset utf8mb4:
 
 ```sql
-CREATE DATABASE rastroglobus
+CREATE DATABASE sggi
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 ```
@@ -74,7 +74,7 @@ copy .env.example .env
 # DB_ENGINE=django.db.backends.mysql
 # DB_HOST=127.0.0.1
 # DB_PORT=3306
-# DB_NAME=rastroglobus
+# DB_NAME=sggi
 # DB_USER=...
 # DB_PASSWORD=...
 # DB_ALLOW_LEGACY_MARIADB=1   # so se o servidor for MariaDB < 10.5 (ex.: 10.2)
@@ -117,6 +117,16 @@ npm run dev
 ```
 
 App em `http://localhost:5173` (proxy `/api` → backend).
+
+## Login Samba / AD (LDAPS)
+
+Autenticação corporativa é opcional e **não altera** o Samba.
+
+1. Coloque a CA UCS em `certs/ucs-ca.crt`
+2. Configure no `.env` as variáveis `AD_LDAP_*` (ver `.env.example`)
+3. Deixe `AD_LDAP_ENABLED=0` até homologar; depois `1` e rebuild do backend
+
+Checklist: [`docs/CHECKLIST_HOMOLOG_LDAP.md`](docs/CHECKLIST_HOMOLOG_LDAP.md) · Pedido à infra: [`docs/SOLICITACAO_INFRA_LDAP_SGGI.md`](docs/SOLICITACAO_INFRA_LDAP_SGGI.md)
 
 ## Usuários seed
 

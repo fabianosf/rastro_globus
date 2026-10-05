@@ -1,8 +1,10 @@
 import csv
 import hashlib
+import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
@@ -13,6 +15,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+
+logger = logging.getLogger("sggi.auth")
 
 from .models import (
     AlertaReincidencia,
@@ -65,26 +69,31 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        username = request.data.get("username", "")
-        password = request.data.get("password", "")
-        try:
-            user = Usuario.objects.get(username=username)
-        except Usuario.DoesNotExist:
+        username = (request.data.get("username") or "").strip()
+        password = request.data.get("password") or ""
+        if not username or not password:
             return Response(
                 {"detail": "Usuário ou senha inválidos."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-        if not user.check_password(password):
+
+        # Com AD_LDAP_ENABLED=1: LDAPBackend + ModelBackend (admin local de emergência).
+        # Com flag off: só ModelBackend (senha local MariaDB).
+        user = authenticate(request, username=username, password=password)
+        if user is None:
+            logger.info("login_failed username=%s", username)
             return Response(
                 {"detail": "Usuário ou senha inválidos."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         if not user.is_active:
+            logger.info("login_inactive username=%s", username)
             return Response(
                 {"detail": "Usuário inativo."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         refresh = RefreshToken.for_user(user)
+        logger.info("login_ok username=%s perfil=%s", username, getattr(user, "perfil", ""))
         return Response(
             {
                 "access": str(refresh.access_token),

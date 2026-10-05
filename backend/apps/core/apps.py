@@ -6,3 +6,8 @@ class CoreConfig(AppConfig):
     name = "apps.core"
     label = "core"
     verbose_name = "SGGI Core"
+
+    def ready(self):
+        from .ldap_auth import connect_ldap_signals
+
+        connect_ldap_signals()

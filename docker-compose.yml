@@ -1,9 +1,12 @@
+# Nome do projeto Docker no servidor (containers: sggi-backend-1, etc.)
+name: sggi
+
 services:
   db:
     image: mariadb:11.4
     restart: unless-stopped
     environment:
-      MARIADB_DATABASE: ${DB_NAME:-rastroglobus}
+      MARIADB_DATABASE: ${DB_NAME:-sggi}
       MARIADB_USER: ${DB_USER:-rastro}
       MARIADB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD obrigatorio}
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD obrigatorio}
@@ -29,6 +32,8 @@ services:
     volumes:
       - media_data:/app/media
       - static_data:/app/staticfiles
+      # CA UCS para LDAPS (arquivo fornecido pela infra — ver certs/README.md)
+      - ./certs:/certs:ro
     depends_on:
       db:
         condition: service_healthy

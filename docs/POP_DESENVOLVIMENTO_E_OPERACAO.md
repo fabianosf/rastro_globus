@@ -127,7 +127,7 @@ Compose injeta no backend: `DB_ENGINE`, `DB_HOST=db`, `DB_PORT=3306`.
 
 | Evidência | Conteúdo |
 |---|---|
-| README | Host `srv-af-des01:8888`; código `/var/www/rastroglobus`; `docker compose up -d --build` |
+| README | Host `srv-af-des01:8888`; código `/var/www/sggi`; `docker compose up -d --build` |
 | [`deploy/Dockerfile.web`](../deploy/Dockerfile.web) | Build Node 20 + nginx |
 | [`deploy/nginx/default.conf`](../deploy/nginx/default.conf) | Proxy `/api`, static/media, SPA |
 | Scripts `_*.py` em `deploy/` | **Ignorados pelo git** (`.gitignore`: `deploy/_*.py`) — não fazem parte do processo versionado |
@@ -636,7 +636,7 @@ git push -u origin HEAD
 |---|---|
 | Host | `srv-af-des01` |
 | URL | `http://srv-af-des01:8888` |
-| Path código | `/var/www/rastroglobus` |
+| Path código | `/var/www/sggi` |
 | Método | Docker Compose |
 
 Homologação / produção corporativa: **PENDENTE DE DEFINIÇÃO**.
@@ -649,7 +649,7 @@ Homologação / produção corporativa: **PENDENTE DE DEFINIÇÃO**.
 
 ### Sequência operacional (CONFIRMADO no README)
 
-1. Atualizar código em `/var/www/rastroglobus` (git pull ou processo equivalente — **PENDENTE DE DEFINIÇÃO** o procedimento formal de sync de código).
+1. Atualizar código em `/var/www/sggi` (git pull ou processo equivalente — **PENDENTE DE DEFINIÇÃO** o procedimento formal de sync de código).
 2. Conferir `.env` (`SECRET_KEY`, `DB_*`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`).
 3. `docker compose up -d --build`.
 4. Se 1ª vez ou banco vazio: `docker compose exec backend python manage.py seed`.

@@ -28,7 +28,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
-    "apps.core",
+    "apps.core.apps.CoreConfig",
 ]
 
 MIDDLEWARE = [
@@ -135,3 +135,30 @@ SIMPLE_JWT = {
 # OCR DANFE (OpenAI Vision) — foto → campos; persistência só após revisão no formulário
 OPENAI_API_KEY = (os.environ.get("OPENAI_API_KEY") or "").strip()
 OPENAI_VISION_MODEL = (os.environ.get("OPENAI_VISION_MODEL") or "gpt-4o-mini").strip()
+
+# --- Samba / AD LDAPS (auth-only; não altera o diretório) ---
+# Ligar com AD_LDAP_ENABLED=1 após CA + conta de serviço. Padrão: desligado.
+from apps.core.ldap_auth import configure_ldap_settings  # noqa: E402
+
+_ldap_cfg = configure_ldap_settings()
+AD_LDAP_ENABLED = bool(_ldap_cfg.pop("AD_LDAP_ENABLED", False))
+for _k, _v in _ldap_cfg.items():
+    globals()[_k] = _v
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "sggi.auth": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+        "django_auth_ldap": {
+            "handlers": ["console"],
+            "level": "WARNING",
+        },
+    },
+}

@@ -44,7 +44,7 @@ Versão: 1.0.0 · Data: 2026-10-05
 
 ## 4. Antes de deploy (`srv-af-des01` / Compose)
 
-- [ ] Código sincronizado em `/var/www/rastroglobus` (procedimento formal PENDENTE se não for git pull)
+- [ ] Código sincronizado em `/var/www/sggi` (procedimento formal PENDENTE se não for git pull)
 - [ ] `.env` no servidor conferido (`SECRET_KEY`, `DB_*`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`)
 - [ ] Backup se mudança de dados/schema
 - [ ] Build local ou CI mental: frontend `tsc` não quebra
