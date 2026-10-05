@@ -446,7 +446,7 @@ export default function GarantiaDanfe() {
         <div>
           <h2 className="text-lg font-semibold">Registrar a partir da DANFE</h2>
           <p className="text-xs text-muted">
-            Digite a DANFE e salve no RG. Se o código da peça existir, a descrição preenche.
+            Digite a DANFE e salve no SGGI. Se o código da peça existir, a descrição preenche.
             CARRO: informe o número. Abre como <span className="text-amber">enviada</span>.
           </p>
         </div>
@@ -687,7 +687,7 @@ export default function GarantiaDanfe() {
             disabled={loading}
             className="rounded-lg bg-cyan px-4 py-2 text-sm font-semibold text-bg disabled:opacity-60"
           >
-            {loading ? "Salvando…" : "Registrar remessa no RG"}
+            {loading ? "Salvando…" : "Registrar remessa no SGGI"}
           </button>
           <Link
             to="/garantias/nova"

@@ -1439,8 +1439,8 @@ class GlobusComprasView(APIView):
 
 class ImprocedentesComprasView(APIView):
     """
-    Cruza garantias improcedentes (RG) com compras do espelho CompraGlobus.
-    Improcedente NAO vem do Globo — so do RastroGlobus. Oracle fora do ar nao impede.
+    Cruza garantias improcedentes (SGGI) com compras do espelho CompraGlobus.
+    Improcedente NAO vem do Globo — so do SGGI. Oracle fora do ar nao impede.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1516,7 +1516,7 @@ class ImprocedentesComprasView(APIView):
                 "globus_detail": globus_detail,
                 "readonly": True,
                 "aviso": (
-                    "Improcedente vem do RastroGlobus. Compras vêm do espelho local "
+                    "Improcedente vem do SGGI. Compras vêm do espelho local "
                     "(sync_globus). Estoque continua no Globo."
                 ),
             }

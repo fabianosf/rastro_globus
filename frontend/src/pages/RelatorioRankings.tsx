@@ -115,7 +115,7 @@ export default function RelatorioRankings() {
     <div className="space-y-4">
       <div>
         <p className="text-sm text-muted">
-          Relatório do que foi cadastrado no RG · {periodoLabel}
+          Relatório do que foi cadastrado no SGGI · {periodoLabel}
         </p>
         <p className="text-xs text-muted">
           {escopo === "abertos"

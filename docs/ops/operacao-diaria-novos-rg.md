@@ -1,4 +1,4 @@
-# Operação diária — casos novos só no RastroGlobus
+# Operação diária — casos novos só no SGGI
 
 **Vigência:** a partir de `DATA_CORTE` = **2026-10-06** (ver [programa-cutover-improcedentes.md](programa-cutover-improcedentes.md)).
 
@@ -7,7 +7,7 @@
 | Onde | Uso |
 |------|-----|
 | **Menu** | Só **Dashboard** (`/`) |
-| **RG ao vivo** | Fila, KPIs · CTAs: Abrir fila · Todas as garantias · **Registrar DANFE** · Nova garantia |
+| **SGGI ao vivo** | Fila, KPIs · CTAs: Abrir fila · Todas as garantias · **Registrar DANFE** · Nova garantia |
 | **Histórico e export** | Planilha + cruzamento improcedentes × compras + CSV / Imprimir PDF |
 | **Rotas** | `/garantias`, `/garantias/nova-danfe`, `/garantias/nova`, `/garantias/:id` |
 
@@ -28,7 +28,7 @@ Códigos de peça / CARRO: digitar e salvar basta (não é obrigatório clicar n
 
 | Antes do corte | Depois do corte |
 |----------------|-----------------|
-| Excel + RG (transição) | **Só RG** para casos novos |
+| Excel + SGGI (transição) | **Só SGGI** para casos novos |
 | Planilha pode receber lançamentos | Planilha **somente leitura** / arquivo; históricos via import BASE GERAL |
 
 ## Quem faz o quê

@@ -3,7 +3,7 @@
 #   .\scripts\register_sync_globus_task.ps1
 
 param(
-    [string]$TaskName = "RastroGlobus-SyncGlobus",
+    [string]$TaskName = "SGGI-SyncGlobus",
     [string]$Time = "06:30",
     [switch]$Unregister
 )

@@ -15,7 +15,7 @@ from apps.core.models import (
 
 
 class Command(BaseCommand):
-    help = "Checklist tecnico go-live RastroGlobus (sem inventar dados)."
+    help = "Checklist tecnico go-live SGGI (sem inventar dados)."
 
     def handle(self, *args, **options):
         fail = 0

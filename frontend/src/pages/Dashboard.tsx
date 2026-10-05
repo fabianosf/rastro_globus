@@ -249,7 +249,7 @@ export default function Dashboard() {
         <div>
           <p className="text-sm text-muted">Painel de garantias</p>
           <p className="text-xs text-muted">
-            O Globo controla estoque. O RastroGlobus controla o rastro.
+            O Globo controla estoque. O SGGI controla o rastro da garantia.
           </p>
         </div>
         <GlobusStatusBadge />
@@ -263,7 +263,7 @@ export default function Dashboard() {
             tab === "vivo" ? "bg-cyan/20 text-cyan" : "text-muted hover:text-ink"
           }`}
         >
-          RG ao vivo
+          SGGI ao vivo
         </button>
         <button
           type="button"
@@ -314,7 +314,7 @@ export default function Dashboard() {
                 onClick={exportCsv}
                 className="rounded-lg bg-cyan px-4 py-2 text-sm font-semibold text-bg"
               >
-                Exportar CSV (RG)
+                Exportar CSV (SGGI)
               </button>
             </div>
           </div>
@@ -334,12 +334,12 @@ export default function Dashboard() {
 
           <div id="relatorio-print" className="space-y-6">
             <div className="print-only mb-4 border-b border-black pb-3">
-              <h1 className="text-xl font-bold">RastroGlobus — Relatório</h1>
+              <h1 className="text-xl font-bold">SGGI — Relatório</h1>
               <p className="text-sm">
                 Ano {anoHist} · Emitido em {emitidoEm}
               </p>
               <p className="text-xs">
-                Negado (planilha) = Improcedente (RG). Improcedente não é status do estoque Globus.
+                Negado (planilha) = Improcedente (SGGI). Improcedente não é status do estoque Globus.
               </p>
             </div>
 
@@ -347,8 +347,8 @@ export default function Dashboard() {
             <>
               <div className="no-print rounded-lg border border-line bg-panel/80 px-4 py-3 text-sm text-muted">
                 Planilha read-only (cutover).{" "}
-                <span className="text-ink">Negado (planilha) = Improcedente (RG)</span>. Novos casos
-                fecham só na ficha do RastroGlobus.
+                <span className="text-ink">Negado (planilha) = Improcedente (SGGI)</span>. Novos casos
+                fecham só na ficha do SGGI.
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
@@ -365,7 +365,7 @@ export default function Dashboard() {
                   <p className="text-lg font-semibold text-amber">{money(hist.totais.em_analise)}</p>
                 </div>
                 <div>
-                  <p className="text-muted">Negado (= Improcedente RG)</p>
+                  <p className="text-muted">Negado (= Improcedente SGGI)</p>
                   <p className="text-lg font-semibold text-red">{money(hist.totais.negado)}</p>
                 </div>
               </div>
@@ -439,7 +439,7 @@ export default function Dashboard() {
               </section>
 
               <section className="space-y-2">
-                <h2 className="font-semibold">Top fornecedores (Negado = Improcedente RG)</h2>
+                <h2 className="font-semibold">Top fornecedores (Negado = Improcedente SGGI)</h2>
                 <div className="h-80 w-full">
                   {rankingChart.length ? (
                     <ResponsiveContainer width="100%" height="100%">
@@ -480,7 +480,7 @@ export default function Dashboard() {
               <div>
                 <h2 className="font-semibold">Improcedentes × compras Globus</h2>
                 <p className="text-xs text-muted">
-                  Improcedente vem do RastroGlobus. Compras vêm do espelho Globus (leitura).
+                  Improcedente vem do SGGI. Compras vêm do espelho Globus (leitura).
                 </p>
               </div>
               <input
@@ -589,7 +589,7 @@ function DashboardVivo({ data }: { data: DashboardData }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="font-semibold text-amber">
-              Fila em análise — fechar no RG ({emAnalise})
+              Fila em análise — fechar no SGGI ({emAnalise})
             </p>
             <p className="mt-1 text-xs text-muted">
               Improcedente só na ficha, após em análise. Globus não registra.
@@ -629,7 +629,7 @@ function DashboardVivo({ data }: { data: DashboardData }) {
       </div>
 
       <div className="rounded-lg border border-line bg-panel/80 px-4 py-3 text-sm text-muted">
-        Ano {ano}: digite a DANFE e salve no RG. Improcedente só na ficha.
+        Ano {ano}: digite a DANFE e salve no SGGI. Improcedente só na ficha.
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -643,7 +643,7 @@ function DashboardVivo({ data }: { data: DashboardData }) {
           title="Em análise"
           value={emAnalise}
           accent="amber"
-          hint="Fila para fechar no RG"
+          hint="Fila para fechar no SGGI"
           to={garantiasStatusHref("em_analise", ano)}
         />
         <KpiCard

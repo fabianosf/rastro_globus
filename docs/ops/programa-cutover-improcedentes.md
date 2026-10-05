@@ -1,4 +1,4 @@
-# Programa operacional — RastroGlobus vs Excel (improcedentes)
+# Programa operacional — SGGI vs Excel (improcedentes)
 
 Documento de orquestração (ChiefAIArchitect).  
 **Não inventa dados.** Campos marcados `TBD — Matheus` só fecham na sessão com Matheus.
@@ -7,9 +7,9 @@ Documento de orquestração (ChiefAIArchitect).
 
 | ID | Decisão |
 |----|---------|
-| ADR-01 | Fonte de verdade de **improcedente** = RastroGlobus (RG) |
-| ADR-02 | Fonte de verdade de **estoque** = Globus (Oracle somente leitura no RG) |
-| ADR-03 | Excel é legado; após cutover, casos **novos** só no RG |
+| ADR-01 | Fonte de verdade de **improcedente** = SGGI |
+| ADR-02 | Fonte de verdade de **estoque** = Globus (Oracle somente leitura no SGGI) |
+| ADR-03 | Excel é legado; após cutover, casos **novos** só no SGGI |
 | ADR-04 | Sem seed/demo para “preencher” anos sem garantia real |
 
 ---
@@ -20,7 +20,7 @@ Documento de orquestração (ChiefAIArchitect).
 
 ### 1.1 Já existe no produto (para validar, não redesenhar)
 
-| Tema | Como está no RG |
+| Tema | Como está no SGGI |
 |------|-----------------|
 | Abrir garantia | Oficina; peça/veículo/fornecedor; busca Globus (espelho/live) |
 | Remessa / retorno | NFs vinculadas na ficha |
@@ -56,14 +56,14 @@ Documento de orquestração (ChiefAIArchitect).
 
 ---
 
-## 2. Playbook de cutover Excel → RastroGlobus
+## 2. Playbook de cutover Excel → SGGI
 
 ### 2.1 Papel da planilha (escolher uma)
 
 | Opção | Quando usar | Comportamento |
 |-------|-------------|----------------|
 | **A — Histórico agregado** | Planilha = BASE GERAL (totais mês/fornecedor/empresa) | Manter `import_planilha` para anos passados; Dashboard aba Histórico; **não** editar Excel para casos novos |
-| **B — Desligar** | Operação aceita KPIs só do RG a partir da data de corte | Parar import; arquivar arquivo; só `Garantia` no app |
+| **B — Desligar** | Operação aceita KPIs só do SGGI a partir da data de corte | Parar import; arquivar arquivo; só `Garantia` no app |
 
 **Decisão adotada (plano 100%):** **Opção A — Histórico agregado**  
 **Data de corte (`DATA_CORTE`):** **2026-10-06** (segunda-feira; ajustar só se Matheus exigir outra data)  
@@ -72,23 +72,23 @@ Documento de orquestração (ChiefAIArchitect).
 ### 2.2 Passos operacionais
 
 1. **Congelar Excel para escrita** na `DATA_CORTE` (permissão somente leitura ou arquivo em pasta arquivo).
-2. **Comunicar** oficina/compras/manutenção: casos novos → RG (`/garantias/nova`).
+2. **Comunicar** oficina/compras/manutenção: casos novos → SGGI (`/garantias/nova`).
 3. Se Opção A: última importação `python manage.py import_planilha <arquivo.xlsx>` (dry-run antes).
 4. Garantir `sync_globus` recente (compras/peças) para cruzamentos.
-5. Semana 1 pós-corte: revisão diária — zero linhas novas no Excel; todos os novos casos no RG.
-6. Após 30 dias: arquivar Excel; manter só RG (+ histórico importado se A).
+5. Semana 1 pós-corte: revisão diária — zero linhas novas no Excel; todos os novos casos no SGGI.
+6. Após 30 dias: arquivar Excel; manter só SGGI (+ histórico importado se A).
 
 ### 2.3 Rollback
 
-- Se bloqueio crítico de operação: reabrir Excel **somente** até correção, com registro de incidentes no RG quando possível.
-- Não apagar dados do RG no rollback.
+- Se bloqueio crítico de operação: reabrir Excel **somente** até correção, com registro de incidentes no SGGI quando possível.
+- Não apagar dados do SGGI no rollback.
 
 ### 2.4 Responsáveis
 
 | Papel | Nome | Contato |
 |-------|------|---------|
 | Sponsor ops | Matheus | `TBD` |
-| Admin RG | `TBD` | |
+| Admin SGGI | `TBD` | |
 | TI / sync Globus | `TBD` | |
 
 ---
@@ -103,7 +103,7 @@ Documento de orquestração (ChiefAIArchitect).
 
 ### 3.2 Decisão padrão (recomendada até Matheus contrariar)
 
-**Operar só casos novos no RG** + opcionalmente importar BASE GERAL (agregados).
+**Operar só casos novos no SGGI** + opcionalmente importar BASE GERAL (agregados).
 
 - Não criar seed fake de 2024/2025.
 - Não implementar import linha a linha sem arquivo/mapeamento real.
@@ -128,7 +128,7 @@ Só inicia após Matheus fornecer **arquivo real** e confirmar colunas.
 - Arquivo Excel/CSV com uma linha = um caso.
 - Mapeamento mínimo:
 
-| Coluna origem (exemplo) | Campo RG |
+| Coluna origem (exemplo) | Campo SGGI |
 |-------------------------|----------|
 | Data / ano | `criado_em` / competência |
 | Código peça | `Peca.codigo_interno` (+ espelho Globus) |
@@ -154,7 +154,7 @@ Só inicia após Matheus fornecer **arquivo real** e confirmar colunas.
 
 ## 4. Checklist de aceite operacional (volume real)
 
-Usar após `DATA_CORTE` e com casos **reais** no RG (não seed).
+Usar após `DATA_CORTE` e com casos **reais** no SGGI (não seed).
 
 ### 4.1 Integridade improcedente
 
@@ -187,7 +187,7 @@ Usar após `DATA_CORTE` e com casos **reais** no RG (não seed).
 
 ### 4.5 Critério de go-live ops
 
-Aceite = itens 4.1–4.4 marcados com evidência (protocolo RG + print/relatório) e assinatura Matheus (ou sponsor).
+Aceite = itens 4.1–4.4 marcados com evidência (protocolo SGGI + print/relatório) e assinatura Matheus (ou sponsor).
 
 | Campo | Valor |
 |-------|-------|

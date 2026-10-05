@@ -6,8 +6,8 @@ Atualizado na implementação dos scripts/docs (sem inventar dados).
 |------|--------|-----------|
 | SOP + DATA_CORTE | Fechado com defaults do plano | `programa-cutover-improcedentes.md` Q1–Q12, Opção A, `DATA_CORTE=2026-10-06`, rubrica Matheus pendente §5 |
 | Import planilha real | Feito | `GARANTIA 2026.xlsx` → 1589 linhas Historico + 127 fornecedores; API historico 2025/2026 OK |
-| Ops diária novos no RG | Entregue | `operacao-diaria-novos-rg.md` |
-| Sync + cron | Entregue | Tarefa Windows `RastroGlobus-SyncGlobus` 06:30; job `sync_globus_job.ps1`; sync `saidas` em andamento (espelho >2M linhas) |
+| Ops diária novos no SGGI | Entregue | `operacao-diaria-novos-rg.md` |
+| Sync + cron | Entregue | Tarefa Windows `SGGI-SyncGlobus` 06:30; job `sync_globus_job.ps1`; sync `saidas` em andamento (espelho >2M linhas) |
 | Aceite go-live | Script + checks auto | `aceite_golive_check.ps1`; manuais (treino/Excel/rubrica) com ops |
 
 ## Ação humana restante

@@ -36,7 +36,7 @@ class Command(BaseCommand):
     help = "Popula usuários e 1 garantia exemplo com peça Globus real (01111011)"
 
     def handle(self, *args, **options):
-        self.stdout.write("Iniciando seed RastroGlobus...")
+        self.stdout.write("Iniciando seed SGGI...")
 
         admin, _ = Usuario.objects.update_or_create(
             username="admin",

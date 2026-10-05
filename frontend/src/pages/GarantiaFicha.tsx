@@ -524,7 +524,7 @@ export default function GarantiaFicha() {
       ) : (
         <div className="rounded-lg border border-green/40 bg-green/10 px-4 py-3 text-sm text-green">
           Procedente: informe apenas o número espelho da NF de entrada no Globo (texto). O
-          RastroGlobus não movimenta estoque.
+          SGGI não movimenta estoque.
         </div>
       )}
 
@@ -670,7 +670,7 @@ export default function GarantiaFicha() {
         </section>
 
         <section className="space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
-          <h3 className="font-semibold">NFs RG</h3>
+          <h3 className="font-semibold">NFs SGGI</h3>
           <p>
             <span className="text-muted">NF compra:</span> {g.nf_compra || "—"}
           </p>
@@ -792,7 +792,7 @@ export default function GarantiaFicha() {
         <div>
           <h3 className="font-semibold">Ações</h3>
           <p className="text-xs text-muted">
-            Decisão no RastroGlobus — não grava estoque Globus. Fluxo: Oficina cadastra → Compras
+            Decisão no SGGI — não grava estoque Globus. Fluxo: Oficina cadastra → Compras
             avança → Manutenção fecha.
           </p>
         </div>
@@ -875,7 +875,7 @@ export default function GarantiaFicha() {
             {allowClose && g.status === "em_analise" && (
               <div className="space-y-4">
                 <p className="text-sm font-medium text-ink">
-                  Decisão no RastroGlobus — não grava estoque Globus
+                  Decisão no SGGI — não grava estoque Globus
                 </p>
 
                 <div className="space-y-3 rounded-lg border border-green/30 bg-green/5 p-3">

@@ -5,4 +5,4 @@ class CoreConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.core"
     label = "core"
-    verbose_name = "RastroGlobus Core"
+    verbose_name = "SGGI Core"

@@ -1,8 +1,9 @@
-# RastroGlobus — Especificação completa para o Cursor
+# SGGI — Especificação completa para o Cursor
 
 Use este arquivo como fonte da verdade para construir a aplicação.
 
-**Produto:** RastroGlobus (RG)  
+**Produto:** SGGI — Sistema de Gestão de Garantias Improcedentes  
+
 **Objetivo:** rastrear o ciclo de garantia de peças da frota **sem movimentar estoque**.  
 **Stack obrigatória:** React (Vite + TypeScript + Tailwind) + Django + Django REST Framework.  
 **Banco no MVP:** SQLite.  
@@ -13,7 +14,7 @@ Use este arquivo como fonte da verdade para construir a aplicação.
 ## 0. Como o Cursor deve trabalhar
 
 1. Leia este arquivo inteiro antes de gerar código.
-2. Não invente módulo de estoque. RastroGlobus **não dá entrada, não dá baixa, não altera saldo**.
+2. Não invente módulo de estoque. SGGI **não dá entrada, não dá baixa, não altera saldo**.
 3. Não integre o ERP Globo no MVP. Apenas campos de espelho (número de NF / local de garantia).
 4. Entregue um monorepo utilizável:
    - `backend/` Django pronto para `migrate` + seed
@@ -66,9 +67,9 @@ Dor:
 - Excel pode ser editado/apagado por qualquer um.
 - Gestão não consegue ver “garantias do ano” num clique.
 
-RastroGlobus resolve o **processo**. O Globo continua dono do **estoque**.
+SGGI resolve o **processo**. O Globo continua dono do **estoque**.
 
-Frase de produto: *O Globo controla estoque. O RastroGlobus controla o rastro da garantia.*
+Frase de produto: *O Globo controla estoque. O SGGI controla o rastro da garantia.*
 
 ---
 
@@ -120,7 +121,7 @@ Frase de produto: *O Globo controla estoque. O RastroGlobus controla o rastro da
 ## 3. Arquitetura
 
 ```
-RastroGlobus (satélite)
+SGGI (satélite)
         │
         ├─ cadastros: veiculo, peca, fornecedor, usuario
         ├─ garantia + timeline + anexos
@@ -526,10 +527,11 @@ Badges:
 - cancelada → cinza
 
 Marca:
-- Nome: **RastroGlobus**
-- Sigla: **RG**
-- Assinatura no login: “Rastro da garantia. Sem misturar com o estoque.”
-- Logo: quadrado arredondado ciano com RG. Não usar globo terrestre.
+- Nome: **SGGI**
+- Nome completo: **Sistema de Gestão de Garantias Improcedentes**
+- Sigla: **SGGI**
+- Assinatura no login: “Sistema de Gestão de Garantias Improcedentes”
+- Logo: quadrado arredondado ciano com SGGI. Não usar globo terrestre.
 
 Layout autenticado:
 - sidebar esquerda 240px
@@ -605,7 +607,7 @@ devDeps:
 ## 13. README do repositório (gerar também)
 
 Incluir:
-- o que é RastroGlobus
+- o que é SGGI
 - regra de não movimentar estoque
 - como rodar backend e frontend
 - usuários seed
@@ -639,13 +641,13 @@ O Cursor só termina quando:
 - [ ] mudar para improcedente **não** grava `nf_entrada_globo` obrigatório
 - [ ] procedente permite informar `nf_entrada_globo` só como texto
 - [ ] export CSV baixa arquivo
-- [ ] UI em português, tema navy/ciano, marca RastroGlobus
+- [ ] UI em português, tema navy/ciano, marca SGGI
 
 ---
 
 ## 16. Prompt curto se o Cursor pedir contexto
 
-> Construa o monorepo RastroGlobus exatamente como RASTROGLOBUS-CURSOR-SPEC.md. Django + DRF + JWT + React Vite TS Tailwind. Não crie módulo de estoque. Improcedente e cortesia não movimentam saldo. Use os models, rotas, seed e cores do spec.
+> Construa o monorepo SGGI exatamente como RASTROGLOBUS-CURSOR-SPEC.md. Django + DRF + JWT + React Vite TS Tailwind. Não crie módulo de estoque. Improcedente e cortesia não movimentam saldo. Use os models, rotas, seed e cores do spec.
 
 ---
 

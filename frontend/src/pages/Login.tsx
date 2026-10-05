@@ -31,12 +31,12 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-bg px-4">
       <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-8 shadow-xl">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-cyan text-lg font-bold text-bg">
-            RG
+          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-cyan text-sm font-bold text-bg">
+            SGGI
           </div>
-          <h1 className="text-2xl font-bold text-text">RastroGlobus</h1>
+          <h1 className="text-2xl font-bold text-text">SGGI</h1>
           <p className="mt-2 text-sm text-muted">
-            Rastro da garantia. Sem misturar com o estoque.
+            Sistema de Gestão de Garantias Improcedentes
           </p>
         </div>
 

@@ -240,7 +240,7 @@ export default function GarantiaNova() {
       setVeiculoLabel(labelVeiculo({ ...v, codigo: String(local.codigo) }));
       setHitsVeiculo([]);
       setQVeiculo("");
-      setMsgGlobus(`Veiculo ${local.codigo} espelhado no RastroGlobus (somente leitura Globus).`);
+      setMsgGlobus(`Veiculo ${local.codigo} espelhado no SGGI (somente leitura Globus).`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Falha ao espelhar veiculo.");
     }
@@ -263,7 +263,7 @@ export default function GarantiaNova() {
       setPecaLabel(`${local.codigo_interno} — ${local.descricao}`);
       setHitsPeca([]);
       setQPeca("");
-      setMsgGlobus(`Peca ${local.codigo_interno} espelhada no RastroGlobus (somente leitura Globus).`);
+      setMsgGlobus(`Peca ${local.codigo_interno} espelhada no SGGI (somente leitura Globus).`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Falha ao espelhar peca.");
     }
@@ -405,14 +405,14 @@ export default function GarantiaNova() {
       <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-line bg-panel p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted">
-            Formulário completo: digite e salve no RG. Globus é opcional (bloco abaixo).
+            Formulário completo: digite e salve no SGGI. Globus é opcional (bloco abaixo).
           </p>
           <GlobusStatusBadge />
         </div>
 
         {globusOffline ? (
           <div className="rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-xs text-amber">
-            Oracle ao vivo indisponivel — continue com o espelho local ou cadastro RG.
+            Oracle ao vivo indisponivel — continue com o espelho local ou cadastro SGGI.
           </div>
         ) : null}
 

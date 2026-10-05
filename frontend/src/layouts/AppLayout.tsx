@@ -11,12 +11,12 @@ export default function AppLayout({ title }: { title?: string }) {
     <div className="flex min-h-screen bg-bg">
       <aside className="no-print flex w-60 shrink-0 flex-col border-r border-line bg-panel">
         <div className="flex items-center gap-3 border-b border-line px-4 py-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan text-sm font-bold text-bg">
-            RG
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan text-[10px] font-bold text-bg">
+            SGGI
           </div>
           <div>
-            <p className="font-semibold text-text">RastroGlobus</p>
-            <p className="text-xs text-muted">NFs que você cadastrou</p>
+            <p className="font-semibold text-text">SGGI</p>
+            <p className="text-xs text-muted">Garantias Improcedentes</p>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-3">
@@ -69,7 +69,7 @@ export default function AppLayout({ title }: { title?: string }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="no-print flex items-center justify-between border-b border-line bg-panel/80 px-6 py-4">
-          <h1 className="text-lg font-semibold text-text">{title || "RastroGlobus"}</h1>
+          <h1 className="text-lg font-semibold text-text">{title || "SGGI"}</h1>
           <div className="flex items-center gap-3 text-sm">
             <span className="text-muted">
               {user?.first_name || user?.username}

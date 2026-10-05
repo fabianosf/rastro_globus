@@ -23,7 +23,7 @@ function titleFor(pathname: string) {
   if (pathname.startsWith("/garantias/nova")) return "Formulário completo";
   if (pathname.match(/^\/garantias\/\d+/)) return "Ficha da NF";
   if (pathname.startsWith("/relatorios")) return "Relatórios";
-  return "RastroGlobus";
+  return "SGGI";
 }
 
 function LayoutShell() {

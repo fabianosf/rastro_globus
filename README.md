@@ -1,12 +1,12 @@
-# RastroGlobus (RG)
+# SGGI — Sistema de Gestão de Garantias Improcedentes
 
 Rastreia o ciclo de garantia de peças da frota **sem movimentar estoque**.
 
-> O Globo controla estoque. O RastroGlobus controla o rastro da garantia.
+> O Globo controla estoque. O SGGI controla o rastro da garantia.
 
 ## Regra inegociável
 
-RastroGlobus **não** dá entrada, **não** dá baixa e **não** altera saldo.  
+SGGI **não** dá entrada, **não** dá baixa e **não** altera saldo.  
 Status `improcedente` e `cortesia` nunca gravam lógica de estoque.  
 O campo `nf_entrada_globo` é **somente texto** e só faz sentido em `procedente`.
 
@@ -204,8 +204,8 @@ Endpoints:
 - `GET /api/globus/pecas/?q=` / `veiculos/?q=` — Oracle ao vivo (alternativa)
 - `GET /api/globus/nf/?numero=` — NF ao vivo (`BGM_NOTAFISCAL`, 15s)
 - `GET /api/globus/movimentos/...` / `compras/` — ainda podem consultar Oracle
-- `GET /api/relatorios/improcedentes-compras/?ano=&peca=` — improcedentes RG × `CompraGlobus` local
-- `POST /api/pecas/ensure/`, `/api/veiculos/ensure/`, `/api/fornecedores/ensure/` — cadastro RG sob demanda
+- `GET /api/relatorios/improcedentes-compras/?ano=&peca=` — improcedentes SGGI × `CompraGlobus` local
+- `POST /api/pecas/ensure/`, `/api/veiculos/ensure/`, `/api/fornecedores/ensure/` — cadastro SGGI sob demanda
 
 Na UI: **Nova garantia** busca peça/veículo/NF no Globus; **Movimentos Globus** inclui tipo Compras/aquisição; Relatórios com **Improcedentes × compras Globus**.
 

@@ -205,7 +205,7 @@ export default function GarantiasList() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-muted">NFs que você cadastrou no RG · {periodoLabel}</p>
+          <p className="text-sm text-muted">NFs que você cadastrou no SGGI · {periodoLabel}</p>
           <p className="text-xs text-muted">Edite ou exclua se errou.</p>
         </div>
         {canCreateGarantia(user?.perfil) ? (
