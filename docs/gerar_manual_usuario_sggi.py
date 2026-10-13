@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Gera docs/MANUAL_USUARIO_SGGI.pdf — manual de uso do aplicativo SGGI."""
+"""
+Gera docs/MANUAL_USUARIO_SGGI.pdf — manual visual passo a passo para o usuário final.
+Uso: python docs/gerar_manual_usuario_sggi.py
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import (
+    Flowable,
+    KeepTogether,
     ListFlowable,
     ListItem,
     PageBreak,
@@ -23,34 +28,44 @@ from reportlab.platypus import (
 
 OUT = Path(__file__).resolve().parent / "MANUAL_USUARIO_SGGI.pdf"
 
+# Paleta próxima do app (claro no PDF para impressão)
 CYAN = colors.HexColor("#0e7490")
+CYAN_SOFT = colors.HexColor("#cffafe")
 INK = colors.HexColor("#0f172a")
-MUTED = colors.HexColor("#475569")
+MUTED = colors.HexColor("#64748b")
 LINE = colors.HexColor("#cbd5e1")
-PANEL = colors.HexColor("#f1f5f9")
+PANEL = colors.HexColor("#f8fafc")
 AMBER = colors.HexColor("#b45309")
+AMBER_SOFT = colors.HexColor("#fef3c7")
 RED = colors.HexColor("#b91c1c")
+RED_SOFT = colors.HexColor("#fee2e2")
+GREEN = colors.HexColor("#15803d")
+GREEN_SOFT = colors.HexColor("#dcfce7")
+SIDEBAR = colors.HexColor("#0f172a")
+SIDEBAR_TXT = colors.HexColor("#e2e8f0")
+WHITE = colors.white
 
 
 def styles():
     base = getSampleStyleSheet()
-    s = {
+    return {
         "cover_title": ParagraphStyle(
             "cover_title",
             parent=base["Title"],
             fontName="Helvetica-Bold",
-            fontSize=28,
+            fontSize=30,
             textColor=CYAN,
             alignment=TA_CENTER,
-            spaceAfter=8,
+            spaceAfter=10,
         ),
         "cover_sub": ParagraphStyle(
             "cover_sub",
             parent=base["Normal"],
             fontName="Helvetica",
-            fontSize=14,
+            fontSize=13,
             textColor=MUTED,
             alignment=TA_CENTER,
+            leading=18,
             spaceAfter=6,
         ),
         "h1": ParagraphStyle(
@@ -59,7 +74,7 @@ def styles():
             fontName="Helvetica-Bold",
             fontSize=16,
             textColor=CYAN,
-            spaceBefore=16,
+            spaceBefore=4,
             spaceAfter=8,
         ),
         "h2": ParagraphStyle(
@@ -68,8 +83,8 @@ def styles():
             fontName="Helvetica-Bold",
             fontSize=12,
             textColor=INK,
-            spaceBefore=12,
-            spaceAfter=6,
+            spaceBefore=10,
+            spaceAfter=5,
         ),
         "body": ParagraphStyle(
             "body",
@@ -78,27 +93,26 @@ def styles():
             fontSize=10,
             leading=14,
             textColor=INK,
-            alignment=TA_JUSTIFY,
             spaceAfter=6,
         ),
-        "bullet": ParagraphStyle(
-            "bullet",
+        "step": ParagraphStyle(
+            "step",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=11,
+            textColor=CYAN,
+            spaceBefore=4,
+            spaceAfter=4,
+        ),
+        "tip": ParagraphStyle(
+            "tip",
             parent=base["Normal"],
             fontName="Helvetica",
-            fontSize=10,
-            leading=13,
-            textColor=INK,
-            leftIndent=4,
-        ),
-        "note": ParagraphStyle(
-            "note",
-            parent=base["Normal"],
-            fontName="Helvetica-Oblique",
             fontSize=9,
             leading=12,
             textColor=AMBER,
-            spaceBefore=4,
-            spaceAfter=8,
+            spaceBefore=2,
+            spaceAfter=6,
         ),
         "warn": ParagraphStyle(
             "warn",
@@ -107,16 +121,73 @@ def styles():
             fontSize=9,
             leading=12,
             textColor=RED,
-            spaceBefore=4,
-            spaceAfter=8,
+            spaceBefore=2,
+            spaceAfter=6,
+        ),
+        "small": ParagraphStyle(
+            "small",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=10,
+            textColor=MUTED,
+        ),
+        "screen_title": ParagraphStyle(
+            "screen_title",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            textColor=INK,
+        ),
+        "screen_muted": ParagraphStyle(
+            "screen_muted",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=7.5,
+            textColor=MUTED,
+            leading=9,
+        ),
+        "screen_btn": ParagraphStyle(
+            "screen_btn",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8,
+            textColor=CYAN,
+            alignment=TA_CENTER,
+        ),
+        "nav": ParagraphStyle(
+            "nav",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=7.5,
+            textColor=SIDEBAR_TXT,
+            leading=11,
+        ),
+        "nav_on": ParagraphStyle(
+            "nav_on",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=7.5,
+            textColor=colors.HexColor("#67e8f9"),
+            leading=11,
         ),
         "caption": ParagraphStyle(
             "caption",
             parent=base["Normal"],
-            fontName="Helvetica",
+            fontName="Helvetica-Oblique",
             fontSize=8,
             textColor=MUTED,
             alignment=TA_CENTER,
+            spaceBefore=3,
+            spaceAfter=8,
+        ),
+        "toc": ParagraphStyle(
+            "toc",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=11,
+            leading=18,
+            textColor=INK,
         ),
         "cell": ParagraphStyle(
             "cell",
@@ -131,71 +202,222 @@ def styles():
             parent=base["Normal"],
             fontName="Helvetica-Bold",
             fontSize=8.5,
-            leading=11,
             textColor=INK,
-        ),
-        "footer": ParagraphStyle(
-            "footer",
-            parent=base["Normal"],
-            fontName="Helvetica",
-            fontSize=8,
-            textColor=MUTED,
-            alignment=TA_CENTER,
-        ),
-        "toc": ParagraphStyle(
-            "toc",
-            parent=base["Normal"],
-            fontName="Helvetica",
-            fontSize=11,
-            leading=18,
-            textColor=INK,
-            leftIndent=10,
         ),
     }
-    return s
 
 
-def bullets(items: list[str], st) -> ListFlowable:
-    return ListFlowable(
-        [ListItem(Paragraph(i, st["bullet"]), leftIndent=12, value="•") for i in items],
-        bulletType="bullet",
-        start="•",
-        leftIndent=10,
-        spaceBefore=2,
-        spaceAfter=8,
+class StepBadge(Flowable):
+    """Círculo com número do passo."""
+
+    def __init__(self, n: int, label: str, st):
+        super().__init__()
+        self.n = n
+        self.label = label
+        self.st = st
+        self.width = 16 * cm
+        self.height = 18
+
+    def draw(self):
+        c = self.canv
+        c.setFillColor(CYAN)
+        c.circle(9, 7, 8, fill=1, stroke=0)
+        c.setFillColor(WHITE)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawCentredString(9, 4, str(self.n))
+        c.setFillColor(INK)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(22, 4, self.label)
+
+
+class ScreenFrame(Flowable):
+    """Mock de tela do SGGI: sidebar + área principal."""
+
+    def __init__(
+        self,
+        title: str,
+        menu_active: str,
+        body_lines: list[str],
+        buttons: list[str] | None = None,
+        highlight: str | None = None,
+        width: float | None = None,
+        height: float = 6.2 * cm,
+    ):
+        super().__init__()
+        self.title = title
+        self.menu_active = menu_active
+        self.body_lines = body_lines
+        self.buttons = buttons or []
+        self.highlight = highlight
+        self.width = width or (17 * cm)
+        self.height = height
+        self.menus = [
+            "Minhas NFs",
+            "Registrar DANFE",
+            "Alertas de reincidência",
+            "Relatórios",
+            "Custo do erro interno",
+        ]
+
+    def draw(self):
+        c = self.canv
+        w, h = self.width, self.height
+        # moldura
+        c.setStrokeColor(LINE)
+        c.setFillColor(PANEL)
+        c.roundRect(0, 0, w, h, 4, fill=1, stroke=1)
+
+        # sidebar
+        sw = 3.4 * cm
+        c.setFillColor(SIDEBAR)
+        c.rect(0, 0, sw, h, fill=1, stroke=0)
+        c.setFillColor(CYAN)
+        c.roundRect(6, h - 22, 22, 14, 2, fill=1, stroke=0)
+        c.setFillColor(WHITE)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawCentredString(17, h - 17, "SGGI")
+        c.setFillColor(SIDEBAR_TXT)
+        c.setFont("Helvetica-Bold", 7)
+        c.drawString(32, h - 16, "SGGI")
+
+        y = h - 38
+        for m in self.menus:
+            on = m == self.menu_active
+            if on:
+                c.setFillColor(colors.HexColor("#164e63"))
+                c.roundRect(4, y - 3, sw - 8, 12, 2, fill=1, stroke=0)
+                c.setFillColor(colors.HexColor("#67e8f9"))
+                c.setFont("Helvetica-Bold", 6.5)
+            else:
+                c.setFillColor(SIDEBAR_TXT)
+                c.setFont("Helvetica", 6.5)
+            c.drawString(8, y, m[:22])
+            y -= 14
+
+        # header
+        c.setFillColor(WHITE)
+        c.rect(sw, h - 22, w - sw, 22, fill=1, stroke=0)
+        c.setStrokeColor(LINE)
+        c.line(sw, h - 22, w, h - 22)
+        c.setFillColor(INK)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(sw + 8, h - 14, self.title)
+        c.setFillColor(MUTED)
+        c.setFont("Helvetica", 7)
+        c.drawRightString(w - 8, h - 14, "usuario · perfil   [ Sair ]")
+
+        # body
+        by = h - 36
+        c.setFillColor(INK)
+        for line in self.body_lines:
+            if line.startswith("##"):
+                c.setFont("Helvetica-Bold", 8)
+                c.setFillColor(CYAN)
+                c.drawString(sw + 8, by, line[2:].strip())
+                c.setFillColor(INK)
+            elif line.startswith(">>"):
+                c.setFillColor(AMBER_SOFT)
+                c.roundRect(sw + 6, by - 3, w - sw - 14, 12, 2, fill=1, stroke=0)
+                c.setFillColor(AMBER)
+                c.setFont("Helvetica-Bold", 7)
+                c.drawString(sw + 10, by, line[2:].strip()[:70])
+                c.setFillColor(INK)
+            elif line.startswith("!!"):
+                c.setFillColor(RED_SOFT)
+                c.roundRect(sw + 6, by - 3, w - sw - 14, 12, 2, fill=1, stroke=0)
+                c.setFillColor(RED)
+                c.setFont("Helvetica", 7)
+                c.drawString(sw + 10, by, line[2:].strip()[:70])
+                c.setFillColor(INK)
+            elif line.startswith("ok"):
+                c.setFillColor(GREEN_SOFT)
+                c.roundRect(sw + 6, by - 3, w - sw - 14, 12, 2, fill=1, stroke=0)
+                c.setFillColor(GREEN)
+                c.setFont("Helvetica", 7)
+                c.drawString(sw + 10, by, line[2:].strip()[:70])
+                c.setFillColor(INK)
+            else:
+                c.setFont("Helvetica", 7.5)
+                c.setFillColor(MUTED if line.startswith("·") else INK)
+                c.drawString(sw + 8, by, line[:78])
+            by -= 11
+            if by < 28:
+                break
+
+        # buttons
+        if self.buttons:
+            bx = sw + 8
+            for btn in self.buttons:
+                hot = self.highlight and btn == self.highlight
+                tw = max(52, len(btn) * 4.2 + 16)
+                c.setFillColor(CYAN_SOFT if hot else WHITE)
+                c.setStrokeColor(CYAN if hot else LINE)
+                c.roundRect(bx, 8, tw, 14, 3, fill=1, stroke=1)
+                c.setFillColor(CYAN)
+                c.setFont("Helvetica-Bold", 6.5)
+                c.drawCentredString(bx + tw / 2, 12, btn)
+                bx += tw + 6
+
+
+def tip_box(text: str, st, kind="tip"):
+    bg = AMBER_SOFT if kind == "tip" else RED_SOFT
+    fg = st["tip"] if kind == "tip" else st["warn"]
+    prefix = "Dica: " if kind == "tip" else "Atenção: "
+    t = Table(
+        [[Paragraph(prefix + text, fg)]],
+        colWidths=[16.5 * cm],
     )
-
-
-def table(headers: list[str], rows: list[list[str]], st, col_widths=None) -> Table:
-    data = [[Paragraph(h, st["cell_h"]) for h in headers]]
-    for row in rows:
-        data.append([Paragraph(c, st["cell"]) for c in row])
-    t = Table(data, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
     t.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), PANEL),
-                ("TEXTCOLOR", (0, 0), (-1, -1), INK),
-                ("GRID", (0, 0), (-1, -1), 0.4, LINE),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("BACKGROUND", (0, 0), (-1, -1), bg),
+                ("BOX", (0, 0), (-1, -1), 0.5, AMBER if kind == "tip" else RED),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]
         )
     )
     return t
 
 
-def add_page_number(canvas, doc):
+def bullets(items: list[str], st):
+    return ListFlowable(
+        [ListItem(Paragraph(i, st["body"]), leftIndent=8, value="•") for i in items],
+        bulletType="bullet",
+        start="•",
+        leftIndent=8,
+        spaceAfter=6,
+    )
+
+
+def simple_table(headers, rows, st, widths):
+    data = [[Paragraph(h, st["cell_h"]) for h in headers]]
+    for r in rows:
+        data.append([Paragraph(c, st["cell"]) for c in r])
+    t = Table(data, colWidths=widths, repeatRows=1)
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), PANEL),
+                ("GRID", (0, 0), (-1, -1), 0.4, LINE),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+    return t
+
+
+def page_footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(MUTED)
     canvas.drawCentredString(
-        A4[0] / 2,
-        1.2 * cm,
-        f"SGGI — Manual do Usuário  ·  página {doc.page}",
+        A4[0] / 2, 1.15 * cm, f"SGGI — Manual do Usuário Final  ·  página {doc.page}"
     )
     canvas.restoreState()
 
@@ -205,442 +427,494 @@ def build():
     doc = SimpleDocTemplate(
         str(OUT),
         pagesize=A4,
-        leftMargin=2 * cm,
-        rightMargin=2 * cm,
-        topMargin=1.8 * cm,
-        bottomMargin=2 * cm,
-        title="SGGI — Manual do Usuário",
+        leftMargin=1.8 * cm,
+        rightMargin=1.8 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.8 * cm,
+        title="SGGI — Manual do Usuário Final",
         author="SGGI",
     )
-    story = []
-    W = A4[0] - 4 * cm
+    story: list = []
 
-    # —— Capa ——
-    story.append(Spacer(1, 4 * cm))
+    # —— CAPA ——
+    story.append(Spacer(1, 3.2 * cm))
     story.append(Paragraph("SGGI", st["cover_title"]))
-    story.append(Paragraph("Sistema de Gestão de Garantias Improcedentes", st["cover_sub"]))
+    story.append(
+        Paragraph("Sistema de Gestão de Garantias Improcedentes", st["cover_sub"])
+    )
     story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph("Manual do Usuário", st["cover_title"]))
+    story.append(Paragraph("Manual do Usuário Final", st["cover_title"]))
     story.append(Spacer(1, 6 * mm))
     story.append(
         Paragraph(
-            "Como utilizar o aplicativo no dia a dia:<br/>"
-            "cadastro de DANFE, ficha da garantia, alertas de reincidência e relatórios.",
+            "Guia visual passo a passo — com telas ilustradas —<br/>"
+            "para cadastrar DANFE, acompanhar a ficha, ver histórico Globus,<br/>"
+            "alertas de reincidência e o custo do erro interno.",
             st["cover_sub"],
         )
     )
     story.append(Spacer(1, 2 * cm))
     story.append(
-        Paragraph(
-            "Versão alinhada às entregas de valor (alertas, custo do erro interno "
-            "e encerramento improcedente em um passo).",
-            st["caption"],
+        tip_box(
+            "O SGGI não movimenta estoque do Globus. Ele só registra o rastro da garantia "
+            "e consulta o Globus em modo leitura.",
+            st,
+            "tip",
         )
     )
-    story.append(Paragraph("Uso interno · PT-BR", st["caption"]))
+    story.append(Spacer(1, 1 * cm))
+    story.append(Paragraph("Uso interno · Português (Brasil)", st["caption"]))
     story.append(PageBreak())
 
-    # —— Sumário ——
-    story.append(Paragraph("Sumário", st["h1"]))
+    # —— SUMÁRIO ——
+    story.append(Paragraph("Como usar este manual", st["h1"]))
+    story.append(
+        Paragraph(
+            "Siga os passos na ordem. Cada etapa mostra uma <b>tela ilustrada</b> parecida "
+            "com o aplicativo e indica onde clicar.",
+            st["body"],
+        )
+    )
+    story.append(Paragraph("Sumário", st["h2"]))
     for line in [
-        "1. O que é o SGGI",
-        "2. Acesso e login",
-        "3. Perfis e permissões",
-        "4. Menu e telas principais",
-        "5. Status da garantia (fluxo)",
-        "6. Registrar DANFE (remessa)",
-        "7. Ficha da garantia — ações do dia a dia",
-        "8. Fechar como improcedente",
+        "1. Entrar no sistema",
+        "2. Menu lateral — onde fica cada coisa",
+        "3. Quem faz o quê (perfis)",
+        "4. Fluxo completo em 1 minuto",
+        "5. Registrar DANFE (remessa)",
+        "6. Minhas NFs — lista e abrir ficha",
+        "7. Ficha — histórico Globus",
+        "8. Avançar status e fechar o caso",
         "9. Encerrar improcedente em um passo",
-        "10. Procedente e cortesia",
-        "11. Alertas de reincidência",
-        "12. Relatórios e Custo do erro interno",
-        "13. Regras importantes",
-        "14. Problemas comuns",
+        "10. Alertas de reincidência",
+        "11. Custo do erro interno",
+        "12. Problemas comuns",
     ]:
         story.append(Paragraph(line, st["toc"]))
     story.append(PageBreak())
 
-    # —— 1 ——
-    story.append(Paragraph("1. O que é o SGGI", st["h1"]))
+    # —— 1 LOGIN ——
+    story.append(Paragraph("1. Entrar no sistema", st["h1"]))
+    story.append(StepBadge(1, "Abra o endereço do SGGI no navegador", st))
+    story.append(Spacer(1, 4))
     story.append(
         Paragraph(
-            "O <b>SGGI</b> (Sistema de Gestão de Garantias Improcedentes) registra e acompanha "
-            "garantias de peças enviadas ao fornecedor. O foco operacional é a <b>DANFE de remessa</b>, "
-            "a análise da resposta do fornecedor e o fechamento do caso — em especial quando a "
-            "garantia é <b>improcedente</b> (erro interno da empresa, não do fornecedor).",
+            "Peça o link ao TI (local: <b>http://localhost:5173</b> ou o servidor da empresa).",
             st["body"],
         )
     )
+    story.append(StepBadge(2, "Informe usuário e senha → Entrar", st))
+    story.append(Spacer(1, 4))
     story.append(
-        Paragraph(
-            "O sistema <b>não grava estoque no Globus</b>. Consultas ao Globus são somente leitura "
-            "(busca de NF, peça, veículo). Decisões e laudos ficam no banco do SGGI.",
-            st["body"],
-        )
-    )
-
-    # —— 2 ——
-    story.append(Paragraph("2. Acesso e login", st["h1"]))
-    story.append(
-        Paragraph(
-            "Abra o endereço do SGGI no navegador (ex.: servidor interno da empresa). "
-            "Na tela de login, informe usuário e senha. Após autenticar, o menu lateral "
-            "mostra as opções disponíveis para o seu perfil.",
-            st["body"],
-        )
-    )
-    story.append(bullets([
-        "No canto superior direito aparecem seu nome e o <b>perfil</b> (oficina, compras, manutenção, direção ou admin).",
-        "Use <b>Sair</b> para encerrar a sessão.",
-        "Se a tela pedir login de novo, a sessão expirou — entre novamente.",
-    ], st))
-
-    # —— 3 ——
-    story.append(Paragraph("3. Perfis e permissões", st["h1"]))
-    story.append(
-        Paragraph(
-            "Cada perfil vê o mesmo aplicativo, mas com botões e ações diferentes:",
-            st["body"],
-        )
-    )
-    story.append(
-        table(
-            ["Perfil", "Pode fazer"],
+        ScreenFrame(
+            "Login",
+            "",
             [
-                [
-                    "Oficina",
-                    "Registrar DANFE / nova garantia; editar ficha aberta; anexar arquivos.",
-                ],
-                [
-                    "Compras",
-                    "Editar ficha; vincular NFs; avançar status (enviada / em análise); cancelar (aberta/enviada).",
-                ],
-                [
-                    "Manutenção",
-                    "Criar/editar; avançar status; <b>fechar</b> procedente, improcedente ou cortesia; improcedente direto.",
-                ],
-                [
-                    "Direção",
-                    "Somente leitura (consultar listas, fichas, alertas e relatórios).",
-                ],
-                [
-                    "Admin",
-                    "Todas as ações acima.",
-                ],
+                "## Tela de acesso",
+                "· Campo Usuário",
+                "· Campo Senha",
+                "· Botão Entrar",
+                "",
+                ">> Após o login você cai em Minhas NFs",
             ],
+            buttons=["Entrar"],
+            highlight="Entrar",
+            height=5.2 * cm,
+        )
+    )
+    story.append(Paragraph("Figura — tela de login (ilustração)", st["caption"]))
+    story.append(
+        tip_box(
+            "No canto superior direito aparecem seu nome e o perfil (oficina, compras, "
+            "manutenção…). Use Sair ao terminar.",
             st,
-            col_widths=[3.2 * cm, W - 3.2 * cm],
         )
     )
-    story.append(Spacer(1, 4 * mm))
-    story.append(
-        Paragraph(
-            "Se um botão não aparece, em geral é porque o seu perfil não tem permissão — "
-            "não é erro do sistema.",
-            st["note"],
-        )
-    )
+    story.append(PageBreak())
 
-    # —— 4 ——
-    story.append(Paragraph("4. Menu e telas principais", st["h1"]))
+    # —— 2 MENU ——
+    story.append(Paragraph("2. Menu lateral — onde fica cada coisa", st["h1"]))
     story.append(
-        table(
+        ScreenFrame(
+            "Minhas NFs",
+            "Minhas NFs",
+            [
+                "## Lista de garantias / NFs",
+                "· Protocolo · NF remessa · Peça · CARRO · Status",
+                "· Botões Editar / Excluir (conforme perfil)",
+                "",
+                "ok Lista vazia = ainda não há caso real cadastrado",
+            ],
+            buttons=[],
+            height=5.5 * cm,
+        )
+    )
+    story.append(Paragraph("Figura — menu à esquerda + área principal", st["caption"]))
+    story.append(
+        simple_table(
             ["Menu", "Para quê"],
             [
-                ["Minhas NFs", "Lista de garantias / NFs cadastradas. Ponto de partida do dia a dia."],
-                ["Registrar DANFE", "Cadastro rápido da remessa em garantia (oficina / manutenção / admin)."],
-                ["Alertas de reincidência", "Mesma peça aplicada de novo no mesmo veículo no prazo de garantia."],
-                ["Relatórios", "Rankings e visão consolidada."],
-                ["Custo do erro interno", "Relatório dos casos improcedentes (custo da empresa)."],
+                ["Minhas NFs", "Ver todas as garantias cadastradas"],
+                ["Registrar DANFE", "Cadastrar a remessa em garantia (oficina/manutenção)"],
+                ["Alertas de reincidência", "Mesma peça no mesmo veículo no prazo"],
+                ["Relatórios", "Rankings e visão consolidada"],
+                ["Custo do erro interno", "Quanto a empresa perdeu com improcedentes"],
             ],
             st,
-            col_widths=[4.2 * cm, W - 4.2 * cm],
+            [4.5 * cm, 12 * cm],
         )
     )
-    story.append(Spacer(1, 3 * mm))
-    story.append(
-        Paragraph(
-            "Ao clicar em uma linha da lista ou em “Abrir garantia”, você entra na "
-            "<b>Ficha da NF</b> — tela completa com dados, histórico (timeline) e ações.",
-            st["body"],
-        )
-    )
+    story.append(PageBreak())
 
-    # —— 5 ——
-    story.append(Paragraph("5. Status da garantia (fluxo)", st["h1"]))
+    # —— 3 PERFIS ——
+    story.append(Paragraph("3. Quem faz o quê (perfis)", st["h1"]))
     story.append(
         Paragraph(
-            "Cada garantia passa por status. O avanço normal é:",
+            "Se um botão não aparece, em geral é o perfil — não é erro do sistema.",
+            st["body"],
+        )
+    )
+    story.append(
+        simple_table(
+            ["Perfil", "Pode"],
+            [
+                ["Oficina", "Registrar DANFE, editar ficha aberta, anexar"],
+                ["Compras", "Vincular NFs, marcar enviada / em análise"],
+                ["Manutenção", "Fechar procedente / improcedente / cortesia + atalho direto"],
+                ["Direção", "Só consultar (leitura)"],
+                ["Admin", "Tudo"],
+            ],
+            st,
+            [3.5 * cm, 13 * cm],
+        )
+    )
+    story.append(Spacer(1, 6 * mm))
+
+    # —— 4 FLUXO ——
+    story.append(Paragraph("4. Fluxo completo em 1 minuto", st["h1"]))
+    story.append(
+        Paragraph(
+            "<b>Oficina</b> registra DANFE → <b>Compras</b> avança (enviada → em análise) → "
+            "<b>Manutenção</b> olha Histórico Globus e fecha (procedente / improcedente / cortesia).",
             st["body"],
         )
     )
     story.append(
         Paragraph(
-            "<b>aberta</b> → <b>enviada</b> → <b>em_analise</b> → "
+            "Status: <b>aberta</b> → <b>enviada</b> → <b>em análise</b> → "
             "<b>procedente</b> / <b>improcedente</b> / <b>cortesia</b>",
             st["body"],
         )
     )
     story.append(
-        table(
-            ["Status", "Significado"],
-            [
-                ["aberta", "Cadastrada; ainda falta marcar envio (NF de remessa)."],
-                ["enviada", "Remessa ao fornecedor registrada."],
-                ["em_analise", "Aguardando / em análise da resposta do fornecedor."],
-                ["procedente", "Fornecedor aceitou — espelho de NF Globo (texto); sem estoque Globus."],
-                ["improcedente", "Negada — custo interno (erro de aplicação, operação etc.)."],
-                ["cortesia", "Fechamento comercial com observação."],
-                ["cancelada", "Caso cancelado (em geral a partir de aberta/enviada)."],
-            ],
+        tip_box(
+            "Improcedente = custo interno da empresa (erro de aplicação, operação, etc.), "
+            "não do fornecedor.",
             st,
-            col_widths=[3.2 * cm, W - 3.2 * cm],
         )
     )
-    story.append(Spacer(1, 3 * mm))
-    story.append(
-        Paragraph(
-            "Para marcar <b>enviada</b> ou <b>em análise</b> é obrigatório ter a "
-            "<b>NF de remessa</b> vinculada.",
-            st["note"],
-        )
-    )
-
     story.append(PageBreak())
 
-    # —— 6 ——
-    story.append(Paragraph("6. Registrar DANFE (remessa)", st["h1"]))
+    # —— 5 DANFE ——
+    story.append(Paragraph("5. Registrar DANFE (remessa)", st["h1"]))
     story.append(
         Paragraph(
-            "Use quando a DANFE de remessa em garantia foi emitida (ex.: CFOP de remessa). "
-            "Menu → <b>Registrar DANFE</b>.",
+            "Use quando a DANFE de remessa em garantia foi emitida. Menu → <b>Registrar DANFE</b>.",
             st["body"],
         )
     )
-    story.append(Paragraph("Passo a passo", st["h2"]))
-    story.append(bullets([
-        "Informe o <b>número da NF</b> de remessa.",
-        "Use <b>Buscar no Globus</b> quando disponível (consulta somente leitura). Se houver várias NFs, escolha a correta na lista.",
-        "Se <b>não</b> achar no Globus (comum quando a remessa existe só na DANFE), preencha manualmente: valor, peça, veículo (CARRO), fornecedor, NF de origem / compra e datas.",
-        "Códigos de peça e veículo: digitar e salvar basta — não é obrigatório clicar na sugestão da lista.",
-        "Confira os dados e clique em <b>Registrar remessa</b> (ou equivalente na tela).",
-        "O sistema cria a garantia (em geral já em <b>enviada</b> com NF remessa) e abre a ficha.",
-    ], st))
+    story.append(StepBadge(1, "Digite o número da NF de remessa", st))
+    story.append(Spacer(1, 3))
+    story.append(StepBadge(2, "Buscar no Globus (ou preencher na mão se não achar)", st))
+    story.append(Spacer(1, 3))
+    story.append(StepBadge(3, "Confira peça, CARRO, fornecedor, valor e NF origem", st))
+    story.append(Spacer(1, 3))
+    story.append(StepBadge(4, "Clique em Registrar remessa", st))
+    story.append(Spacer(1, 6))
     story.append(
-        Paragraph(
-            "Não use o número da remessa como se fosse a NF de compra. A NF de origem "
-            "é outro documento (compra / aplicação).",
-            st["warn"],
+        ScreenFrame(
+            "Registrar DANFE",
+            "Registrar DANFE",
+            [
+                "## Remessa em garantia",
+                "· Nº NF remessa: [ 87002____________ ]",
+                "· [ Buscar no Globus ]",
+                "· Peça / CARRO / Fornecedor / Valor",
+                "· NF origem (compra) — outro número!",
+                "",
+                ">> Não use o nº da remessa como se fosse NF de compra",
+            ],
+            buttons=["Buscar no Globus", "Registrar remessa"],
+            highlight="Registrar remessa",
+            height=6.4 * cm,
         )
     )
+    story.append(Paragraph("Figura — cadastro da DANFE", st["caption"]))
+    story.append(
+        tip_box(
+            "Código de peça ou CARRO: digitar e salvar basta — não precisa clicar na sugestão.",
+            st,
+        )
+    )
+    story.append(PageBreak())
 
-    # —— 7 ——
-    story.append(Paragraph("7. Ficha da garantia — ações do dia a dia", st["h1"]))
+    # —— 6 LISTA ——
+    story.append(Paragraph("6. Minhas NFs — lista e abrir ficha", st["h1"]))
     story.append(
         Paragraph(
-            "Na ficha você vê protocolo, status, peça, veículo, fornecedor, NFs, laudo, "
-            "anexos e a <b>timeline</b> (histórico de mudanças de status).",
+            "Menu → <b>Minhas NFs</b>. Clique na linha ou em <b>Editar</b> para abrir a ficha completa.",
             st["body"],
         )
     )
-    story.append(Paragraph("Seção Ações (resumo)", st["h2"]))
-    story.append(bullets([
-        "<b>Laudo (resumo)</b> — texto técnico; obrigatório para improcedente (ou PDF de laudo).",
-        "<b>Marcar como enviada / em análise</b> — avanço do fluxo (compras / manutenção / admin).",
-        "<b>Vincular NF</b> — remessa ou retorno (compras / admin).",
-        "<b>Anexar PDF</b> — documentos da garantia.",
-        "<b>Fechar procedente / improcedente / cortesia</b> — só manutenção / admin, em geral com status <b>em análise</b>.",
-        "<b>Encerrar como improcedente (fornecedor já respondeu)</b> — atalho em <b>aberta</b> ou <b>enviada</b> (ver seção 9).",
-    ], st))
+    story.append(
+        ScreenFrame(
+            "Minhas NFs",
+            "Minhas NFs",
+            [
+                "## Suas garantias",
+                "· Protocolo | NF remessa | Peça | CARRO | Valor | Status",
+                "· GAR-2026-xxxx | 87002 | 0111… | 47624 | R$ … | Enviada",
+                "",
+                "ok Clique na linha para abrir a Ficha da NF",
+            ],
+            buttons=["Editar", "Excluir"],
+            highlight="Editar",
+            height=5.5 * cm,
+        )
+    )
+    story.append(Paragraph("Figura — lista Minhas NFs", st["caption"]))
+    story.append(PageBreak())
 
-    # —— 8 ——
-    story.append(Paragraph("8. Fechar como improcedente", st["h1"]))
+    # —— 7 HISTÓRICO ——
+    story.append(Paragraph("7. Ficha — Histórico Globus", st["h1"]))
     story.append(
         Paragraph(
-            "<b>Improcedente</b> significa: o custo é da empresa (erro interno), não do fornecedor. "
-            "Causas típicas: erro de aplicação (oficina), erro de operação (motorista), "
-            "falha sistêmica do veículo, ou outro.",
+            "Na ficha, <b>antes</b> de fechar o caso, role até o bloco "
+            "<b>Histórico Globus (peça / veículo)</b>.",
             st["body"],
         )
     )
-    story.append(Paragraph("Checklist (fluxo normal)", st["h2"]))
-    story.append(bullets([
-        "Garantia em status <b>em análise</b>.",
-        "Preencher o <b>laudo</b> (resumo e/ou PDF).",
-        "Informar <b>causa</b>, <b>tipo de responsável</b> e <b>nome do responsável</b> "
-        "(nome obrigatório, exceto quando o tipo for “sistema”).",
-        "Opcional: cobrança interna e observação.",
-        "Clicar em <b>Improcedente</b>.",
-        "Conferir a timeline e, se for o caso, o relatório <b>Custo do erro interno</b>.",
-    ], st))
     story.append(
-        Paragraph(
-            "Improcedente <b>nunca</b> grava lógica de estoque nem NF de entrada Globo.",
-            st["warn"],
+        ScreenFrame(
+            "Ficha da NF",
+            "Minhas NFs",
+            [
+                "## Histórico Globus (peça / veículo)",
+                "· Peça 01111011 · Veículo 47624",
+                "· Alertas de reincidência (se houver)",
+                "· Tabela: últimas saídas no CARRO",
+                "· Tabela: últimas compras da peça",
+                "",
+                "ok Consulta só leitura — não altera estoque",
+            ],
+            buttons=["Atualizar espelho", "Atualizar do Globus (ao vivo)"],
+            highlight="Atualizar espelho",
+            height=6.5 * cm,
         )
     )
+    story.append(Paragraph("Figura — painel Histórico Globus na ficha", st["caption"]))
+    story.append(bullets([
+        "<b>Atualizar espelho</b> — lê o MariaDB (sync_globus).",
+        "<b>Atualizar do Globus (ao vivo)</b> — tenta Oracle; se falhar, mantém o espelho.",
+        "Isso ajuda a ver se a peça já saiu neste CARRO — o <b>laudo</b> continua sendo da manutenção.",
+    ], st))
+    story.append(PageBreak())
 
-    # —— 9 ——
+    # —— 8 FECHAR ——
+    story.append(Paragraph("8. Avançar status e fechar o caso", st["h1"]))
+    story.append(Paragraph("Compras / manutenção — seção Ações", st["h2"]))
+    story.append(bullets([
+        "Com NF remessa: <b>Marcar como enviada</b>",
+        "Depois: <b>Marcar em análise</b>",
+        "Em análise (só manutenção/admin): preencher laudo e fechar",
+    ], st))
+    story.append(
+        ScreenFrame(
+            "Ficha da NF — Ações",
+            "Minhas NFs",
+            [
+                "## Ações",
+                "· Laudo (resumo) — obrigatório para improcedente",
+                "· Descrição / observação",
+                "",
+                "## Em análise — decisão",
+                "· Fechar procedente (NF espelho Globo — texto)",
+                "· Fechar improcedente / cortesia",
+            ],
+            buttons=["Marcar em análise", "Improcedente", "Procedente", "Cortesia"],
+            highlight="Improcedente",
+            height=6.6 * cm,
+        )
+    )
+    story.append(Paragraph("Figura — seção Ações na ficha", st["caption"]))
+    story.append(
+        tip_box(
+            "Procedente: informe só o número espelho da NF de entrada no Globo. "
+            "O SGGI não dá entrada no estoque.",
+            st,
+        )
+    )
+    story.append(
+        tip_box(
+            "Improcedente exige laudo (texto e/ou PDF) + causa + responsável.",
+            st,
+            "warn",
+        )
+    )
+    story.append(PageBreak())
+
+    # —— 9 DIRETO ——
     story.append(Paragraph("9. Encerrar improcedente em um passo", st["h1"]))
     story.append(
         Paragraph(
-            "Quando o fornecedor <b>já respondeu</b> e o caso ainda está <b>aberta</b> ou "
-            "<b>enviada</b>, a manutenção (ou admin) pode usar o botão "
-            "<b>Encerrar como improcedente (fornecedor já respondeu)</b>.",
+            "Quando o fornecedor <b>já respondeu</b> e o status ainda é <b>aberta</b> ou "
+            "<b>enviada</b>, a manutenção pode usar o atalho (sem clicar etapa a etapa).",
             st["body"],
         )
     )
     story.append(
+        ScreenFrame(
+            "Ficha da NF — Ações",
+            "Minhas NFs",
+            [
+                "## Encerrar como improcedente",
+                "## (fornecedor já respondeu)",
+                "· Causa · Responsável · Cobrança interna",
+                "· Laudo PDF (opcional) · NF retorno + data",
+                "",
+                "!! Exige NF de remessa + laudo",
+            ],
+            buttons=["Encerrar como improcedente (fornecedor já respondeu)"],
+            highlight="Encerrar como improcedente (fornecedor já respondeu)",
+            height=6.2 * cm,
+        )
+    )
+    story.append(Paragraph("Figura — atalho improcedente direto", st["caption"]))
+    story.append(
         Paragraph(
-            "O sistema avança sozinho a timeline completa "
-            "(enviada → em análise → improcedente, conforme o status atual), "
-            "sem precisar clicar etapa por etapa.",
+            "O sistema gera a timeline completa (enviada → em análise → improcedente) "
+            "sozinho. Continua sem gravar estoque Globus.",
             st["body"],
         )
     )
-    story.append(Paragraph("Exige", st["h2"]))
-    story.append(bullets([
-        "NF de remessa vinculada (o botão fica desabilitado sem remessa).",
-        "Laudo: resumo e/ou arquivo PDF.",
-        "Causa e responsável (mesmas regras do fechamento normal).",
-    ], st))
-    story.append(Paragraph("Opcional", st["h2"]))
-    story.append(bullets([
-        "Número e <b>data própria</b> da NF de retorno do fornecedor.",
-        "Cobrança interna e observações.",
-    ], st))
-
     story.append(PageBreak())
 
-    # —— 10 ——
-    story.append(Paragraph("10. Procedente e cortesia", st["h1"]))
-    story.append(Paragraph("Procedente", st["h2"]))
+    # —— 10 ALERTAS ——
+    story.append(Paragraph("10. Alertas de reincidência", st["h1"]))
     story.append(
         Paragraph(
-            "Use quando o fornecedor aceitou a garantia. Informe o número espelho da "
-            "<b>NF de entrada no Globo</b> (campo texto). Isso <b>não movimenta estoque</b> "
-            "no Globus — é apenas registro no SGGI.",
+            "Mesma peça aplicada de novo no <b>mesmo veículo</b> dentro do prazo. "
+            "Menu → <b>Alertas de reincidência</b> (badge com quantidade de novos).",
             st["body"],
         )
     )
-    story.append(Paragraph("Cortesia", st["h2"]))
     story.append(
-        Paragraph(
-            "Fechamento comercial. Exige observação. Também não grava estoque Globus.",
-            st["body"],
+        ScreenFrame(
+            "Alertas de reincidência",
+            "Alertas de reincidência",
+            [
+                "## KPIs: Novos | Garantias abertas | Valor estimado",
+                "· Filtros: status, peça, fornecedor, empresa",
+                "· Lista: CARRO · peça · dias entre · valor",
+                "· Dias ≤ 30 em destaque",
+                "",
+                "ok Abrir garantia · Descartar (motivo obrigatório)",
+            ],
+            buttons=["Filtrar", "Abrir garantia", "Descartar"],
+            highlight="Abrir garantia",
+            height=6.2 * cm,
         )
     )
+    story.append(Paragraph("Figura — tela de alertas", st["caption"]))
+    story.append(PageBreak())
 
-    # —— 11 ——
-    story.append(Paragraph("11. Alertas de reincidência", st["h1"]))
+    # —— 11 ERRO INTERNO ——
+    story.append(Paragraph("11. Custo do erro interno", st["h1"]))
     story.append(
         Paragraph(
-            "<b>Reincidência</b> = a mesma peça aplicada de novo no <b>mesmo veículo</b> "
-            "dentro do prazo de garantia. O menu mostra um <b>badge</b> com a quantidade "
-            "de alertas novos.",
-            st["body"],
-        )
-    )
-    story.append(bullets([
-        "KPIs no topo: novos, garantias abertas a partir de alertas, valor estimado.",
-        "Filtros por status, peça, fornecedor e empresa.",
-        "Dias entre aplicações em destaque quando ≤ 30.",
-        "<b>Abrir garantia</b> — vai para a ficha (quando houver vínculo).",
-        "<b>Descartar</b> — exige motivo (ex.: falso positivo).",
-        "Lista vazia: em geral ainda não houve sync Globus / detecção — não significa erro da tela.",
-    ], st))
-
-    # —— 12 ——
-    story.append(Paragraph("12. Relatórios e Custo do erro interno", st["h1"]))
-    story.append(Paragraph("Relatórios", st["h2"]))
-    story.append(
-        Paragraph(
-            "Menu <b>Relatórios</b>: rankings e visão consolidada para acompanhamento gerencial.",
-            st["body"],
-        )
-    )
-    story.append(Paragraph("Custo do erro interno", st["h2"]))
-    story.append(
-        Paragraph(
-            "Menu <b>Custo do erro interno</b>. Consolida garantias <b>improcedentes</b> do ano "
-            "(total, valor, por causa, por mês, cobrança, vínculo com reincidência). "
-            "Escolha o ano no filtro da tela.",
+            "Menu → <b>Custo do erro interno</b>. Soma as garantias já fechadas como "
+            "<b>improcedente</b> no ano (custo da empresa).",
             st["body"],
         )
     )
     story.append(
-        Paragraph(
-            "Use este relatório para acompanhar quanto a empresa perdeu com erro interno "
-            "e onde concentrar correção (oficina, motorista, peça, veículo).",
-            st["note"],
+        ScreenFrame(
+            "Custo do erro interno",
+            "Custo do erro interno",
+            [
+                "## Ano [ 2026 ▼ ]  [ Imprimir ]",
+                "· Custo total · Quantidade · % cobrado · Valor recuperado",
+                "· Gráficos: por causa · por mês",
+                "· Top peças · Top veículos · Top responsáveis",
+                "",
+                "ok Só entra caso real fechado como improcedente",
+            ],
+            buttons=["Imprimir"],
+            height=6.0 * cm,
         )
     )
-
-    # —— 13 ——
-    story.append(Paragraph("13. Regras importantes", st["h1"]))
-    story.append(bullets([
-        "<b>Nunca</b> o SGGI escreve no Oracle Globus (estoque / movimentos).",
-        "Casos novos devem ser lançados no SGGI (não na planilha Excel legada).",
-        "Improcedente = custo interno; procedente = fornecedor aceitou (espelho texto).",
-        "Laudo é obrigatório para improcedente.",
-        "NF de remessa é obrigatória para avançar enviada / em análise e para improcedente direto.",
-        "Preserve anexos e laudos — não apagar pastas de mídia no servidor.",
-    ], st))
-
-    # —— 14 ——
-    story.append(Paragraph("14. Problemas comuns", st["h1"]))
+    story.append(Paragraph("Figura — relatório Custo do erro interno", st["caption"]))
     story.append(
-        table(
+        tip_box(
+            "Se o total estiver R$ 0,00, ainda não há improcedente real no ano — "
+            "está correto.",
+            st,
+        )
+    )
+    story.append(PageBreak())
+
+    # —— 12 FAQ ——
+    story.append(Paragraph("12. Problemas comuns", st["h1"]))
+    story.append(
+        simple_table(
             ["Situação", "O que fazer"],
             [
                 [
-                    "Não vejo “Registrar DANFE”",
-                    "Seu perfil pode ser compras ou direção. Peça a oficina/manutenção ou use perfil com permissão de criar.",
+                    "Não vejo Registrar DANFE",
+                    "Perfil compras/direção não cria. Use oficina, manutenção ou admin.",
                 ],
                 [
-                    "Botão de fechar não aparece",
-                    "Só manutenção/admin fecham. Em análise: use procedente/improcedente/cortesia. Em aberta/enviada: use improcedente direto (manutenção).",
+                    "Não consigo fechar",
+                    "Só manutenção/admin. Em aberta/enviada use o atalho improcedente direto.",
                 ],
                 [
-                    "Erro pedindo NF de remessa",
-                    "Vincule a NF de remessa na ficha (compras) ou informe o número antes de avançar / encerrar.",
+                    "Pede NF de remessa",
+                    "Vincule a remessa na ficha (compras) antes de avançar ou encerrar.",
                 ],
                 [
-                    "Erro pedindo laudo",
-                    "Preencha o resumo do laudo ou anexe o PDF antes de marcar improcedente.",
+                    "Pede laudo",
+                    "Preencha o resumo ou anexe o PDF na seção Ações.",
                 ],
                 [
-                    "Busca Globus não acha a NF",
-                    "Preencha manualmente. Remessa muitas vezes existe só na DANFE.",
+                    "Globus não acha a NF",
+                    "Preencha na mão. Remessa muitas vezes só existe na DANFE.",
                 ],
                 [
-                    "Lista de alertas vazia",
-                    "Aguarde o espelho/sync Globus e a detecção de reincidência; filtre por status “Novo”.",
+                    "Histórico Globus vazio",
+                    "Peça ao TI para rodar sync_globus / detectar_reincidencia.",
+                ],
+                [
+                    "Lista Minhas NFs vazia",
+                    "Normal se ainda não cadastrou caso real. Use Registrar DANFE.",
                 ],
             ],
             st,
-            col_widths=[4.5 * cm, W - 4.5 * cm],
+            [4.8 * cm, 11.7 * cm],
         )
     )
+    story.append(Spacer(1, 10 * mm))
+    story.append(Paragraph("Lembrete final", st["h2"]))
+    story.append(bullets([
+        "Globus = estoque. SGGI = rastro da garantia.",
+        "Improcedente nunca grava estoque / NF de entrada Globo.",
+        "Use o Histórico Globus na ficha para apoiar a decisão — o laudo é humano.",
+    ], st))
     story.append(Spacer(1, 8 * mm))
-    story.append(
-        Paragraph(
-            "Em caso de dúvida operacional, fale com o responsável de manutenção / sponsor "
-            "do processo de garantias na empresa.",
-            st["body"],
-        )
-    )
-    story.append(Spacer(1, 6 * mm))
-    story.append(
-        Paragraph(
-            "— Fim do manual —",
-            st["caption"],
-        )
-    )
+    story.append(Paragraph("— Fim do manual. Bom trabalho! —", st["caption"]))
 
-    doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
+    doc.build(story, onFirstPage=page_footer, onLaterPages=page_footer)
     print(f"OK: {OUT}")
+    return OUT
 
 
 if __name__ == "__main__":
