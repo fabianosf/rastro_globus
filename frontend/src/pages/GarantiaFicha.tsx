@@ -119,6 +119,10 @@ export default function GarantiaFicha() {
   const [laudoEdit, setLaudoEdit] = useState("");
   const [savingLaudo, setSavingLaudo] = useState(false);
   const [savingDireto, setSavingDireto] = useState(false);
+  const [laudoPdfFile, setLaudoPdfFile] = useState<File | null>(null);
+  const [nfRetornoData, setNfRetornoData] = useState(
+    () => new Date().toISOString().slice(0, 10)
+  );
 
   const perfil = user?.perfil;
   const allowNf = canVincularNf(perfil);
@@ -498,7 +502,9 @@ export default function GarantiaFicha() {
       const ok = await vincularNota("remessa", nfRemessa);
       if (!ok) return;
     }
-    const temLaudo = Boolean((g.laudo_resumo || "").trim() || g.laudo_pdf);
+    const temLaudo = Boolean(
+      (g.laudo_resumo || "").trim() || g.laudo_pdf || laudoPdfFile
+    );
     const laudoDraft = (laudoEdit || "").trim();
     if (!temLaudo && !laudoDraft) {
       setError(
@@ -508,32 +514,56 @@ export default function GarantiaFicha() {
     }
     setSavingDireto(true);
     try {
-      const body: Record<string, unknown> = {
-        descricao,
-        motivo_improcedente: motivo,
-        causa_improcedente: causa,
-        responsavel_tipo: respTipo,
-        responsavel_nome: respNome,
-        cobranca_interna: cobrancaInterna,
-        observacao_cobranca: obsCobranca,
-        laudo_resumo: laudoDraft || g.laudo_resumo || "",
-      };
-      if (nfRetorno.trim()) {
-        body.nf_retorno = {
-          numero: nfRetorno.trim(),
-          serie: "",
-          data_emissao: nfData,
+      const laudoResumo = laudoDraft || g.laudo_resumo || "";
+      let updated: Garantia;
+      if (laudoPdfFile) {
+        const fd = new FormData();
+        fd.append("descricao", descricao);
+        fd.append("motivo_improcedente", motivo);
+        fd.append("causa_improcedente", causa);
+        fd.append("responsavel_tipo", respTipo);
+        fd.append("responsavel_nome", respNome);
+        fd.append("cobranca_interna", cobrancaInterna ? "true" : "false");
+        fd.append("observacao_cobranca", obsCobranca);
+        fd.append("laudo_resumo", laudoResumo);
+        fd.append("laudo_pdf", laudoPdfFile);
+        if (nfRetorno.trim()) {
+          fd.append("nf_retorno_numero", nfRetorno.trim());
+          fd.append("nf_retorno_data", nfRetornoData);
+        }
+        updated = await api<Garantia>(
+          `/api/garantias/${g.id}/fechar-improcedente-direto/`,
+          { method: "POST", formData: fd }
+        );
+      } else {
+        const body: Record<string, unknown> = {
+          descricao,
+          motivo_improcedente: motivo,
+          causa_improcedente: causa,
+          responsavel_tipo: respTipo,
+          responsavel_nome: respNome,
+          cobranca_interna: cobrancaInterna,
+          observacao_cobranca: obsCobranca,
+          laudo_resumo: laudoResumo,
         };
+        if (nfRetorno.trim()) {
+          body.nf_retorno = {
+            numero: nfRetorno.trim(),
+            serie: "",
+            data_emissao: nfRetornoData,
+          };
+        }
+        updated = await api<Garantia>(
+          `/api/garantias/${g.id}/fechar-improcedente-direto/`,
+          { method: "POST", body }
+        );
       }
-      const updated = await api<Garantia>(
-        `/api/garantias/${g.id}/fechar-improcedente-direto/`,
-        { method: "POST", body }
-      );
       setG(updated);
       setMsg("Garantia encerrada como improcedente (fluxo direto).");
       setDescricao("");
       setMotivo("");
       setNfRetorno("");
+      setLaudoPdfFile(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Erro ao encerrar improcedente.");
     } finally {
@@ -937,15 +967,19 @@ export default function GarantiaFicha() {
                   Avança aberta → enviada → em análise → improcedente em um passo, com
                   histórico completo. Exige NF de remessa e laudo. Não grava estoque Globus.
                 </p>
-                {!g.nf_remessa ? (
+                {!g.nf_remessa && !nfRemessa ? (
                   <p className="text-xs text-amber">
                     Informe/vincule a NF de remessa (campo acima ou no avanço) antes de
                     encerrar.
                   </p>
                 ) : null}
-                {!((g.laudo_resumo || "").trim() || g.laudo_pdf || (laudoEdit || "").trim()) ? (
+                {!((g.laudo_resumo || "").trim() ||
+                g.laudo_pdf ||
+                (laudoEdit || "").trim() ||
+                laudoPdfFile) ? (
                   <p className="text-xs text-amber">
-                    Laudo vazio — preencha o laudo acima antes de marcar improcedente.
+                    Laudo vazio — preencha o resumo ou anexe o PDF antes de marcar
+                    improcedente.
                   </p>
                 ) : null}
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -956,33 +990,35 @@ export default function GarantiaFicha() {
                       value={causa}
                       onChange={(e) => setCausa(e.target.value)}
                     >
-                      <option value="erro_aplicacao">Erro aplicacao (oficina)</option>
-                      <option value="erro_operacao">Erro operacao (motorista)</option>
-                      <option value="falha_sistemica_veiculo">Falha sistemica veiculo</option>
+                      <option value="erro_aplicacao">Erro de aplicação (oficina)</option>
+                      <option value="erro_operacao">Erro de operação (motorista)</option>
+                      <option value="falha_sistemica_veiculo">
+                        Falha sistêmica do veículo
+                      </option>
                       <option value="outro">Outro</option>
                     </select>
                   </label>
                   <label className="text-xs">
-                    <span className="mb-1 block text-muted">Responsavel tipo *</span>
+                    <span className="mb-1 block text-muted">Responsável tipo *</span>
                     <select
                       className={field}
                       value={respTipo}
                       onChange={(e) => setRespTipo(e.target.value)}
                     >
                       <option value="oficina">Oficina</option>
-                      <option value="mecanico">Mecanico</option>
+                      <option value="mecanico">Mecânico</option>
                       <option value="motorista">Motorista</option>
                       <option value="sistema">Sistema</option>
                       <option value="outro">Outro</option>
                     </select>
                   </label>
                   <label className="text-xs sm:col-span-2">
-                    <span className="mb-1 block text-muted">Responsavel nome</span>
+                    <span className="mb-1 block text-muted">Responsável nome</span>
                     <input
                       className={field}
                       value={respNome}
                       onChange={(e) => setRespNome(e.target.value)}
-                      placeholder="Obrigatorio exceto tipo=sistema"
+                      placeholder="Obrigatório exceto tipo = sistema"
                     />
                   </label>
                   <label className="flex items-center gap-2 text-xs sm:col-span-2">
@@ -991,10 +1027,10 @@ export default function GarantiaFicha() {
                       checked={cobrancaInterna}
                       onChange={(e) => setCobrancaInterna(e.target.checked)}
                     />
-                    Cobranca interna
+                    Cobrança interna
                   </label>
                   <label className="text-xs sm:col-span-2">
-                    <span className="mb-1 block text-muted">Obs. cobranca</span>
+                    <span className="mb-1 block text-muted">Obs. cobrança</span>
                     <input
                       className={field}
                       value={obsCobranca}
@@ -1010,6 +1046,15 @@ export default function GarantiaFicha() {
                     />
                   </label>
                   <label className="text-xs sm:col-span-2">
+                    <span className="mb-1 block text-muted">Laudo em PDF (opcional)</span>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="block w-full text-xs"
+                      onChange={(e) => setLaudoPdfFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  <label className="text-xs">
                     <span className="mb-1 block text-muted">
                       NF retorno do fornecedor (opcional)
                     </span>
@@ -1020,10 +1065,19 @@ export default function GarantiaFicha() {
                       placeholder="Número da NF de retorno"
                     />
                   </label>
+                  <label className="text-xs">
+                    <span className="mb-1 block text-muted">Data NF retorno</span>
+                    <input
+                      type="date"
+                      className={field}
+                      value={nfRetornoData}
+                      onChange={(e) => setNfRetornoData(e.target.value)}
+                    />
+                  </label>
                 </div>
                 <button
                   type="button"
-                  disabled={savingDireto}
+                  disabled={savingDireto || (!g.nf_remessa && !nfRemessa)}
                   className="rounded-lg bg-red/20 px-4 py-2 text-sm text-red disabled:opacity-60"
                   onClick={() => fecharImprocedenteDireto()}
                 >

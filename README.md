@@ -91,6 +91,20 @@ python manage.py check_db
 
 `check_db` deve imprimir `OK` com a versão do MariaDB/MySQL.
 
+4. Fuso horário (obrigatório para `CONVERT_TZ` / datas locais):
+
+```sql
+SELECT CONVERT_TZ(NOW(),'UTC','America/Sao_Paulo');
+```
+
+O resultado **não pode ser NULL**. Se for NULL, carregue as tabelas de fuso no servidor MySQL/MariaDB:
+
+```bash
+mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root mysql
+```
+
+Depois repita o `SELECT CONVERT_TZ(...)` e confirme um horário válido.
+
 ### Importar planilha histórica (BASE GERAL)
 
 Totais mensais por fornecedor/empresa (não cria `Garantia`):

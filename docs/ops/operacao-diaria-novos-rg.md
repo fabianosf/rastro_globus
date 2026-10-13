@@ -6,12 +6,14 @@
 
 | Onde | Uso |
 |------|-----|
-| **Menu** | Só **Dashboard** (`/`) |
+| **Menu** | Dashboard, garantias, **Alertas de reincidência**, **Custo do erro interno** |
 | **SGGI ao vivo** | Fila, KPIs · CTAs: Abrir fila · Todas as garantias · **Registrar DANFE** · Nova garantia |
+| **Alertas de reincidência** | `/alertas-reincidencia` — mesma peça/veículo no prazo; descarte com motivo |
+| **Custo do erro interno** | `/relatorios/erro-interno` — improcedentes (custo da empresa) por causa/mês |
 | **Histórico e export** | Planilha + cruzamento improcedentes × compras + CSV / Imprimir PDF |
 | **Rotas** | `/garantias`, `/garantias/nova-danfe`, `/garantias/nova`, `/garantias/:id` |
 
-Fora do app (redirect): reincidência Globus, regras de prazo, movimentos Globus, relatórios soltos.
+Fora do app (redirect): regras de prazo, movimentos Globus, relatórios soltos.
 
 ## Fluxo DANFE (remessa em garantia)
 
@@ -46,6 +48,18 @@ Códigos de peça / CARRO: digitar e salvar basta (não é obrigatório clicar n
 2. Laudo + motivo + causa na seção **Ações**.
 3. **Não** pede entrada no estoque Globus.
 4. Conferir KPIs / Histórico e export.
+
+## Improcedente direto
+
+Atalho na ficha quando o fornecedor **já respondeu** e o caso ainda está `aberta` ou `enviada` (também aceita `em_analise` via API).
+
+| | |
+|--|--|
+| **Quando usar** | Resposta do fornecedor já chegou; não faz sentido avançar etapa a etapa só para fechar |
+| **Quem pode** | Manutenção ou admin |
+| **O que exige** | NF de remessa vinculada; laudo (resumo e/ou PDF); causa + responsável |
+| **Opcional** | NF de retorno do fornecedor (número + data) |
+| **Efeito** | Gera timeline completa (`enviada` → `em_analise` → `improcedente`) sem alterar `TRANSICOES`; **não** grava estoque Globus |
 
 ## Excel
 

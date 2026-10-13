@@ -1,6 +1,7 @@
 from datetime import date
 
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -116,3 +117,63 @@ class FecharImprocedenteDiretoTests(TestCase):
         self.g.refresh_from_db()
         self.assertEqual(self.g.status, Garantia.Status.IMPROCEDENTE)
         self.assertEqual(EventoGarantia.objects.filter(garantia=self.g).count(), 3)
+
+    def test_causa_invalida_nao_altera(self):
+        status_antes = self.g.status
+        eventos_antes = EventoGarantia.objects.filter(garantia=self.g).count()
+        retornos_antes = NotaFiscal.objects.filter(tipo=NotaFiscal.Tipo.RETORNO).count()
+        with self.assertRaises(ValidationError):
+            fechar_improcedente_direto(
+                self.g,
+                self.user,
+                laudo_resumo="Laudo ok",
+                causa_improcedente="causa_inventada",
+                responsavel_tipo=Garantia.ResponsavelTipo.OFICINA,
+                responsavel_nome="Joao",
+                nf_retorno={"numero": "RET-NOPE", "serie": "", "data_emissao": "2026-03-01"},
+            )
+        self.g.refresh_from_db()
+        self.assertEqual(self.g.status, status_antes)
+        self.assertEqual(
+            EventoGarantia.objects.filter(garantia=self.g).count(), eventos_antes
+        )
+        self.assertEqual(
+            NotaFiscal.objects.filter(tipo=NotaFiscal.Tipo.RETORNO).count(),
+            retornos_antes,
+        )
+        self.assertFalse(self.g.nota_retorno_id)
+
+    def test_api_multipart_laudo_pdf(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        pdf = SimpleUploadedFile(
+            "laudo.pdf", b"%PDF-1.4 fake-laudo", content_type="application/pdf"
+        )
+        resp = client.post(
+            f"/api/garantias/{self.g.id}/fechar-improcedente-direto/",
+            {
+                "laudo_resumo": "Laudo com PDF",
+                "causa_improcedente": "erro_aplicacao",
+                "responsavel_tipo": "oficina",
+                "responsavel_nome": "Joao",
+                "motivo_improcedente": "aplicacao",
+                "cobranca_interna": "true",
+                "laudo_pdf": pdf,
+                "nf_retorno_numero": "RET-PDF1",
+                "nf_retorno_data": "2026-03-10",
+            },
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.g.refresh_from_db()
+        self.assertEqual(self.g.status, Garantia.Status.IMPROCEDENTE)
+        self.assertTrue(self.g.laudo_pdf)
+        evento_final = (
+            EventoGarantia.objects.filter(
+                garantia=self.g, status_novo=Garantia.Status.IMPROCEDENTE
+            )
+            .order_by("-id")
+            .first()
+        )
+        self.assertIsNotNone(evento_final)
+        self.assertTrue(evento_final.arquivo)

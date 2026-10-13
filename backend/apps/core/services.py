@@ -256,12 +256,16 @@ def fechar_improcedente_direto(
                 f"Encerramento direto (fornecedor já respondeu): {novo_status}"
             )
             if is_last:
+                last_extras = dict(extras)
+                if laudo_pdf is not None:
+                    # Anexa o PDF também ao EventoGarantia final (mudar_status → arquivo=)
+                    last_extras["arquivo"] = garantia.laudo_pdf or laudo_pdf
                 mudar_status(
                     garantia,
                     novo_status,
                     usuario,
                     descricao or etapa_desc,
-                    **extras,
+                    **last_extras,
                 )
             else:
                 mudar_status(garantia, novo_status, usuario, etapa_desc)
