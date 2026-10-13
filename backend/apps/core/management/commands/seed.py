@@ -166,20 +166,14 @@ class Command(BaseCommand):
             )
             return obj
 
-        # Uma garantia improcedente com código Globus real (cruzamento com compras)
+        # Garantia exemplo com código Globus real — em_analise (NÃO improcedente:
+        # evita poluir o relatório Custo do erro interno com valor de demo).
         criado = timezone.now() - timedelta(days=70)
         valor = Decimal("1840.00")
         remessa = nf(
             "87002",
             NotaFiscal.Tipo.REMESSA,
             criado.date() + timedelta(days=2),
-            forn_x,
-            valor,
-        )
-        retorno = nf(
-            "4988",
-            NotaFiscal.Tipo.RETORNO,
-            criado.date() + timedelta(days=20),
             forn_x,
             valor,
         )
@@ -190,14 +184,19 @@ class Command(BaseCommand):
                 "peca": peca,
                 "veiculo": veiculos["47624"],
                 "fornecedor": forn_x,
-                "status": Garantia.Status.IMPROCEDENTE,
+                "status": Garantia.Status.EM_ANALISE,
                 "valor_peca": valor,
                 "nota_remessa": remessa,
-                "nota_retorno": retorno,
+                "nota_retorno": None,
                 "data_envio": criado.date() + timedelta(days=2),
-                "data_retorno": criado.date() + timedelta(days=20),
+                "data_retorno": None,
                 "nf_entrada_globo": "",
-                "motivo_improcedente": "Desgaste natural — fora de cobertura.",
+                "motivo_improcedente": "",
+                "causa_improcedente": "",
+                "responsavel_tipo": "",
+                "responsavel_nome": "",
+                "cobranca_interna": False,
+                "observacao_cobranca": "",
                 "observacoes": "",
                 "laudo_resumo": "Laudo gerado na abertura da garantia.",
                 "criado_por": oficina,
@@ -221,12 +220,6 @@ class Command(BaseCommand):
                 Garantia.Status.ENVIADA,
                 Garantia.Status.EM_ANALISE,
                 "Fornecedor em análise.",
-                admin,
-            ),
-            (
-                Garantia.Status.EM_ANALISE,
-                Garantia.Status.IMPROCEDENTE,
-                "Desgaste natural — fora de cobertura.",
                 admin,
             ),
         ]
