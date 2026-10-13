@@ -20,6 +20,60 @@ import {
 } from "../components/GlobusStatusBadge";
 import Timeline, { type Evento } from "../components/Timeline";
 
+type HistoricoGlobusPayload = {
+  peca_codigo: string;
+  veiculo_codigo: string;
+  peca_espelho: {
+    codigo_interno: string;
+    descricao: string;
+    codigo_grupo: string;
+  } | null;
+  saidas: Array<{
+    data_movto: string | null;
+    veiculo_codigo: string;
+    peca_codigo: string;
+    peca_descricao: string;
+    numero_nf: string;
+    fornecedor_nome: string;
+    quantidade: string | null;
+    valor_unitario: string | null;
+    empresa: string;
+  }>;
+  compras: Array<{
+    data_movto: string | null;
+    data_emissao: string | null;
+    numero_nf: string;
+    serie_nf: string;
+    peca_codigo: string;
+    fornecedor_nome: string;
+    quantidade: string | null;
+    valor_unitario: string | null;
+    empresa: string;
+  }>;
+  alertas_reincidencia: Array<{
+    id: number;
+    status: string;
+    data_1: string;
+    data_2: string;
+    dias_entre: number;
+    valor_estimado: string | null;
+    fornecedor_1: string;
+    nf_1: string;
+  }>;
+  sync: {
+    saidas: { status: string; inicio: string; linhas_gravadas: number } | null;
+    compras: { status: string; inicio: string; linhas_gravadas: number } | null;
+    pecas: { status: string; inicio: string; linhas_gravadas: number } | null;
+  };
+  ao_vivo: {
+    solicitado: boolean;
+    saidas: unknown[] | null;
+    compras: unknown[] | null;
+    erro: string;
+  };
+  aviso: string;
+};
+
 type Garantia = {
   id: number;
   protocolo: string;
@@ -123,6 +177,10 @@ export default function GarantiaFicha() {
   const [nfRetornoData, setNfRetornoData] = useState(
     () => new Date().toISOString().slice(0, 10)
   );
+  const [histGlobus, setHistGlobus] = useState<HistoricoGlobusPayload | null>(null);
+  const [histLoading, setHistLoading] = useState(false);
+  const [histError, setHistError] = useState("");
+  const [histAoVivo, setHistAoVivo] = useState(false);
 
   const perfil = user?.perfil;
   const allowNf = canVincularNf(perfil);
@@ -147,6 +205,29 @@ export default function GarantiaFicha() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadHistoricoGlobus = useCallback(
+    (aoVivo = false) => {
+      if (!id) return;
+      setHistLoading(true);
+      setHistError("");
+      setHistAoVivo(aoVivo);
+      const q = aoVivo ? "?ao_vivo=1" : "";
+      api<HistoricoGlobusPayload>(`/api/garantias/${id}/historico-globus/${q}`)
+        .then(setHistGlobus)
+        .catch((e) =>
+          setHistError(
+            e instanceof ApiError ? e.message : "Erro ao carregar histórico Globus."
+          )
+        )
+        .finally(() => setHistLoading(false));
+    },
+    [id]
+  );
+
+  useEffect(() => {
+    if (g?.id) loadHistoricoGlobus(false);
+  }, [g?.id, loadHistoricoGlobus]);
 
   useEffect(() => {
     if (!g) return;
@@ -870,6 +951,190 @@ export default function GarantiaFicha() {
           ) : null}
         </section>
       </div>
+
+      <section
+        id="historico-globus"
+        className="space-y-3 rounded-xl border border-line bg-panel p-4 scroll-mt-4"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">Histórico Globus (peça / veículo)</h3>
+            <p className="text-xs text-muted">
+              Consulta somente leitura no espelho MariaDB. Não altera estoque. Use para
+              ver se a peça já saiu neste CARRO ou se há alerta de reincidência — o laudo
+              continua humano.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={histLoading}
+              onClick={() => loadHistoricoGlobus(false)}
+              className="rounded-lg border border-line px-3 py-1.5 text-sm text-cyan disabled:opacity-60"
+            >
+              {histLoading && !histAoVivo ? "Atualizando…" : "Atualizar espelho"}
+            </button>
+            <button
+              type="button"
+              disabled={histLoading}
+              onClick={() => loadHistoricoGlobus(true)}
+              className="rounded-lg border border-amber/40 px-3 py-1.5 text-sm text-amber disabled:opacity-60"
+            >
+              {histLoading && histAoVivo ? "Consultando…" : "Atualizar do Globus (ao vivo)"}
+            </button>
+          </div>
+        </div>
+
+        {histError ? <p className="text-sm text-red">{histError}</p> : null}
+        {histLoading && !histGlobus ? (
+          <p className="text-sm text-muted">Carregando histórico…</p>
+        ) : null}
+
+        {histGlobus ? (
+          <div className="space-y-4 text-sm">
+            <div className="flex flex-wrap gap-3 text-xs text-muted">
+              <span>
+                Peça: <strong className="text-ink">{histGlobus.peca_codigo || "—"}</strong>
+              </span>
+              <span>
+                Veículo:{" "}
+                <strong className="text-ink">{histGlobus.veiculo_codigo || "—"}</strong>
+              </span>
+              {histGlobus.peca_espelho ? (
+                <span className="text-green">
+                  No espelho: {histGlobus.peca_espelho.descricao || histGlobus.peca_espelho.codigo_interno}
+                  {histGlobus.peca_espelho.codigo_grupo
+                    ? ` · grupo ${histGlobus.peca_espelho.codigo_grupo}`
+                    : ""}
+                </span>
+              ) : (
+                <span className="text-amber">
+                  Peça não encontrada no espelho PecaGlobus (rode sync_globus ou busca ao
+                  vivo).
+                </span>
+              )}
+            </div>
+
+            {histGlobus.alertas_reincidencia.length > 0 ? (
+              <div className="rounded-lg border border-amber/40 bg-amber/10 px-3 py-2">
+                <p className="mb-1 text-xs font-semibold text-amber">
+                  Alerta(s) de reincidência ativos
+                </p>
+                <ul className="space-y-1 text-xs">
+                  {histGlobus.alertas_reincidencia.map((a) => (
+                    <li key={a.id}>
+                      <Link
+                        to="/alertas-reincidencia"
+                        className="text-cyan hover:underline"
+                      >
+                        {a.status}
+                      </Link>
+                      : {a.data_1} → {a.data_2} ({a.dias_entre} dias)
+                      {a.valor_estimado ? ` · est. R$ ${a.valor_estimado}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-muted">
+                Nenhum alerta de reincidência aberto para este par peça/veículo.
+              </p>
+            )}
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Últimas saídas (espelho)
+                </h4>
+                {histGlobus.saidas.length === 0 ? (
+                  <p className="text-xs text-muted">
+                    Nenhuma saída no espelho para este par. Verifique sync de saídas.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-line">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-bg/60 text-muted">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-medium">Data</th>
+                          <th className="px-2 py-1.5 text-left font-medium">NF</th>
+                          <th className="px-2 py-1.5 text-left font-medium">Forn.</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Qtd</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {histGlobus.saidas.map((s, i) => (
+                          <tr key={`${s.data_movto}-${s.numero_nf}-${i}`} className="border-t border-line">
+                            <td className="px-2 py-1.5">{s.data_movto || "—"}</td>
+                            <td className="px-2 py-1.5">{s.numero_nf || "—"}</td>
+                            <td className="px-2 py-1.5">{s.fornecedor_nome || "—"}</td>
+                            <td className="px-2 py-1.5 text-right">{s.quantidade ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              <div>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Últimas compras da peça (espelho)
+                </h4>
+                {histGlobus.compras.length === 0 ? (
+                  <p className="text-xs text-muted">
+                    Nenhuma compra no espelho para esta peça.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-line">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-bg/60 text-muted">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-medium">Data</th>
+                          <th className="px-2 py-1.5 text-left font-medium">NF</th>
+                          <th className="px-2 py-1.5 text-left font-medium">Forn.</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Unit.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {histGlobus.compras.map((c, i) => (
+                          <tr key={`${c.numero_nf}-${i}`} className="border-t border-line">
+                            <td className="px-2 py-1.5">
+                              {c.data_movto || c.data_emissao || "—"}
+                            </td>
+                            <td className="px-2 py-1.5">{c.numero_nf || "—"}</td>
+                            <td className="px-2 py-1.5">{c.fornecedor_nome || "—"}</td>
+                            <td className="px-2 py-1.5 text-right">
+                              {c.valor_unitario ?? "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {histGlobus.ao_vivo.solicitado ? (
+              <div className="rounded-lg border border-line bg-bg/40 px-3 py-2 text-xs">
+                <p className="font-medium text-ink">Consulta ao vivo</p>
+                {histGlobus.ao_vivo.erro ? (
+                  <p className="text-amber">
+                    Oracle indisponível ou erro: {histGlobus.ao_vivo.erro}. Mantido o
+                    espelho local.
+                  </p>
+                ) : (
+                  <p className="text-muted">
+                    Movimentos ao vivo: {histGlobus.ao_vivo.saidas?.length ?? 0} · Compras
+                    ao vivo: {histGlobus.ao_vivo.compras?.length ?? 0} (somente leitura).
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            <p className="text-[11px] text-muted">{histGlobus.aviso}</p>
+          </div>
+        ) : null}
+      </section>
 
       <section
         id="acoes"

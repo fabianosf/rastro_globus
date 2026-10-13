@@ -22,12 +22,16 @@ logger = logging.getLogger("sggi.auth")
 from .models import (
     AlertaReincidencia,
     Anexo,
+    CompraGlobus,
     Fornecedor,
     Garantia,
     HistoricoGarantiaMensal,
     NotaFiscal,
     Peca,
+    PecaGlobus,
     RegraPrazoGarantia,
+    SaidaGlobus,
+    SyncLog,
     Usuario,
     Veiculo,
 )
@@ -745,6 +749,163 @@ class GarantiaViewSet(viewsets.ModelViewSet):
 
         garantia.refresh_from_db()
         return Response(GarantiaDetailSerializer(garantia, context={"request": request}).data)
+
+    @action(detail=True, methods=["get"], url_path="historico-globus")
+    def historico_globus(self, request, pk=None):
+        """
+        Histórico da peça/veículo no espelho Globus (somente leitura).
+        ?ao_vivo=1 tenta complementar com query Oracle; se falhar, mantém o espelho.
+        """
+        garantia = self.get_object()
+        peca_cod = (garantia.peca.codigo_interno if garantia.peca_id else "").strip()
+        veic_cod = (garantia.veiculo.codigo if garantia.veiculo_id else "").strip()
+        ao_vivo = (request.query_params.get("ao_vivo") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+
+        peca_espelho = None
+        if peca_cod:
+            pg = PecaGlobus.objects.filter(codigo_interno__iexact=peca_cod).first()
+            if pg:
+                peca_espelho = {
+                    "codigo_interno": pg.codigo_interno,
+                    "descricao": pg.descricao,
+                    "codigo_grupo": pg.codigo_grupo,
+                    "atualizado_em": pg.atualizado_em,
+                }
+
+        saidas_qs = SaidaGlobus.objects.all()
+        if peca_cod:
+            saidas_qs = saidas_qs.filter(peca_codigo__iexact=peca_cod)
+        if veic_cod:
+            saidas_qs = saidas_qs.filter(veiculo_codigo__iexact=veic_cod)
+        saidas = [
+            {
+                "data_movto": s.data_movto,
+                "veiculo_codigo": s.veiculo_codigo,
+                "peca_codigo": s.peca_codigo,
+                "peca_descricao": s.peca_descricao,
+                "numero_nf": s.numero_nf,
+                "fornecedor_nome": s.fornecedor_nome,
+                "quantidade": str(s.quantidade) if s.quantidade is not None else None,
+                "valor_unitario": str(s.valor_unitario) if s.valor_unitario is not None else None,
+                "empresa": s.empresa,
+            }
+            for s in saidas_qs.order_by("-data_movto", "-id")[:10]
+        ]
+
+        compras = []
+        if peca_cod:
+            compras = [
+                {
+                    "data_movto": c.data_movto,
+                    "data_emissao": c.data_emissao,
+                    "numero_nf": c.numero_nf,
+                    "serie_nf": c.serie_nf,
+                    "peca_codigo": c.peca_codigo,
+                    "fornecedor_nome": c.fornecedor_nome,
+                    "quantidade": str(c.quantidade) if c.quantidade is not None else None,
+                    "valor_unitario": str(c.valor_unitario) if c.valor_unitario is not None else None,
+                    "empresa": c.empresa,
+                }
+                for c in CompraGlobus.objects.filter(peca_codigo__iexact=peca_cod).order_by(
+                    "-data_movto", "-id"
+                )[:5]
+            ]
+
+        alertas = []
+        if peca_cod and veic_cod:
+            alertas = [
+                {
+                    "id": a.id,
+                    "status": a.status,
+                    "data_1": a.data_1,
+                    "data_2": a.data_2,
+                    "dias_entre": a.dias_entre,
+                    "valor_estimado": str(a.valor_estimado)
+                    if a.valor_estimado is not None
+                    else None,
+                    "fornecedor_1": a.fornecedor_1,
+                    "nf_1": a.nf_1,
+                }
+                for a in AlertaReincidencia.objects.filter(
+                    peca_codigo__iexact=peca_cod,
+                    veiculo_codigo__iexact=veic_cod,
+                )
+                .exclude(status=AlertaReincidencia.Status.DESCARTADO)
+                .order_by("-data_2", "-id")[:5]
+            ]
+
+        def _sync_resumo(tipo: str):
+            log = SyncLog.objects.filter(tipo=tipo).order_by("-inicio").first()
+            if not log:
+                return None
+            return {
+                "status": log.status,
+                "inicio": log.inicio,
+                "fim": log.fim,
+                "linhas_gravadas": log.linhas_gravadas,
+                "erro": (log.erro or "")[:200],
+            }
+
+        ao_vivo_saidas = None
+        ao_vivo_compras = None
+        ao_vivo_erro = ""
+        if ao_vivo and (peca_cod or veic_cod):
+            try:
+                from .globus_oracle import GlobusOracleError
+                from .globus_queries import buscar_compras_peca, buscar_movimentos
+
+                try:
+                    ao_vivo_saidas = buscar_movimentos(
+                        peca=peca_cod,
+                        veiculo=veic_cod,
+                        tipo="saida",
+                        limite=10,
+                    )
+                except GlobusOracleError as exc:
+                    ao_vivo_erro = str(exc)
+                except Exception as exc:
+                    ao_vivo_erro = f"Falha ao consultar movimentos: {exc}"
+
+                if peca_cod and not ao_vivo_erro:
+                    try:
+                        ao_vivo_compras = buscar_compras_peca(peca_cod, limite=5)
+                    except GlobusOracleError as exc:
+                        ao_vivo_erro = str(exc)
+                    except Exception as exc:
+                        ao_vivo_erro = f"Falha ao consultar compras: {exc}"
+            except Exception as exc:
+                ao_vivo_erro = str(exc)
+
+        return Response(
+            {
+                "peca_codigo": peca_cod,
+                "veiculo_codigo": veic_cod,
+                "peca_espelho": peca_espelho,
+                "saidas": saidas,
+                "compras": compras,
+                "alertas_reincidencia": alertas,
+                "sync": {
+                    "saidas": _sync_resumo(SyncLog.Tipo.SAIDAS),
+                    "compras": _sync_resumo(SyncLog.Tipo.COMPRAS),
+                    "pecas": _sync_resumo(SyncLog.Tipo.PECAS),
+                },
+                "ao_vivo": {
+                    "solicitado": ao_vivo,
+                    "saidas": ao_vivo_saidas,
+                    "compras": ao_vivo_compras,
+                    "erro": ao_vivo_erro,
+                },
+                "readonly": True,
+                "aviso": (
+                    "Consulta somente leitura (espelho MariaDB / Oracle). "
+                    "Não altera estoque Globus. Defeito vs. erro interno continua sendo laudo humano."
+                ),
+            }
+        )
 
 
 def _garantias_ano(ano):

@@ -12,8 +12,9 @@
 | **Custo do erro interno** | `/relatorios/erro-interno` — improcedentes (custo da empresa) por causa/mês |
 | **Histórico e export** | Planilha + cruzamento improcedentes × compras + CSV / Imprimir PDF |
 | **Rotas** | `/garantias`, `/garantias/nova-danfe`, `/garantias/nova`, `/garantias/:id` |
+| **Ficha → Histórico Globus** | Saídas/compras do espelho + alertas de reincidência (só leitura); botão ao vivo opcional |
 
-Fora do app (redirect): regras de prazo, movimentos Globus, relatórios soltos.
+Fora do app (redirect): regras de prazo, movimentos Globus soltos, relatórios soltos.
 
 ## Fluxo DANFE (remessa em garantia)
 
