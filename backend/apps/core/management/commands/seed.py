@@ -1,22 +1,17 @@
-from datetime import timedelta
-from decimal import Decimal
-
 from django.core.management.base import BaseCommand
 from django.db.models import Q
-from django.utils import timezone
 
 from apps.core.models import (
-    EventoGarantia,
     Fornecedor,
     Garantia,
-    NotaFiscal,
     Peca,
     Usuario,
     Veiculo,
 )
 
-# Protocolos / peças de demo antiga — removidos para não poluir a UI
+# Protocolos / peças de demo — removidos para não poluir a UI / relatório
 PROTOCOLOS_DEMO_REMOVER = (
+    "GAR-2026-0131",
     "GAR-2026-0142",
     "GAR-2026-0138",
     "GAR-2026-0126",
@@ -33,7 +28,7 @@ PECAS_DEMO_REMOVER = (
 
 
 class Command(BaseCommand):
-    help = "Popula usuários e 1 garantia exemplo com peça Globus real (01111011)"
+    help = "Popula usuários, cadastros base e peça/veículo Globus (sem garantia demo)"
 
     def handle(self, *args, **options):
         self.stdout.write("Iniciando seed SGGI...")
@@ -95,7 +90,7 @@ class Command(BaseCommand):
         direcao.set_password("direcao123")
         direcao.save()
 
-        forn_x, _ = Fornecedor.objects.update_or_create(
+        Fornecedor.objects.update_or_create(
             cnpj="00.000.000/0001-00",
             defaults={
                 "razao_social": "Distribuidor X Ltda",
@@ -118,19 +113,16 @@ class Command(BaseCommand):
             },
         )
 
-        veiculos_data = [
+        for codigo, casa in (
             ("47620", "Matriz"),
             ("47885", "Matriz"),
             ("47624", "Matriz"),
             ("46201", "Anexo"),
-        ]
-        veiculos = {}
-        for codigo, casa in veiculos_data:
-            v, _ = Veiculo.objects.update_or_create(
+        ):
+            Veiculo.objects.update_or_create(
                 codigo=codigo,
                 defaults={"casa": casa, "descricao": f"Veículo {codigo}", "ativo": True},
             )
-            veiculos[codigo] = v
 
         peca, _ = Peca.objects.update_or_create(
             codigo_interno="01111011",
@@ -141,97 +133,18 @@ class Command(BaseCommand):
             },
         )
 
-        # Remove garantias/peças demo antigas (não usadas mais)
+        # Remove garantias/peças demo (não poluir Minhas NFs nem Custo do erro interno)
         qs_demo = Garantia.objects.filter(
             Q(protocolo__in=PROTOCOLOS_DEMO_REMOVER)
             | Q(peca__codigo_interno__in=PECAS_DEMO_REMOVER)
             | Q(protocolo__startswith="GAR-2026-000")
-        ).exclude(protocolo="GAR-2026-0131")
+            | Q(protocolo__startswith="GAR-TEST-")
+        )
         removidas = qs_demo.count()
         qs_demo.delete()
         Peca.objects.filter(codigo_interno__in=PECAS_DEMO_REMOVER).delete()
         if removidas:
-            self.stdout.write(f"Removidas {removidas} garantias de demonstração antigas.")
-
-        def nf(numero, tipo, data, fornecedor, valor=None):
-            obj, _ = NotaFiscal.objects.update_or_create(
-                numero=str(numero),
-                serie="",
-                tipo=tipo,
-                defaults={
-                    "data_emissao": data,
-                    "fornecedor": fornecedor,
-                    "valor": valor,
-                },
-            )
-            return obj
-
-        # Garantia exemplo com código Globus real — em_analise (NÃO improcedente:
-        # evita poluir o relatório Custo do erro interno com valor de demo).
-        criado = timezone.now() - timedelta(days=70)
-        valor = Decimal("1840.00")
-        remessa = nf(
-            "87002",
-            NotaFiscal.Tipo.REMESSA,
-            criado.date() + timedelta(days=2),
-            forn_x,
-            valor,
-        )
-
-        g, _ = Garantia.objects.update_or_create(
-            protocolo="GAR-2026-0131",
-            defaults={
-                "peca": peca,
-                "veiculo": veiculos["47624"],
-                "fornecedor": forn_x,
-                "status": Garantia.Status.EM_ANALISE,
-                "valor_peca": valor,
-                "nota_remessa": remessa,
-                "nota_retorno": None,
-                "data_envio": criado.date() + timedelta(days=2),
-                "data_retorno": None,
-                "nf_entrada_globo": "",
-                "motivo_improcedente": "",
-                "causa_improcedente": "",
-                "responsavel_tipo": "",
-                "responsavel_nome": "",
-                "cobranca_interna": False,
-                "observacao_cobranca": "",
-                "observacoes": "",
-                "laudo_resumo": "Laudo gerado na abertura da garantia.",
-                "criado_por": oficina,
-                "km_aplicacao": 120000,
-                "requisicao_anterior": "REQ-100",
-                "requisicao_atual": "REQ-200",
-            },
-        )
-        Garantia.objects.filter(pk=g.pk).update(criado_em=criado)
-
-        EventoGarantia.objects.filter(garantia=g).delete()
-        eventos = [
-            ("", Garantia.Status.ABERTA, "Garantia aberta / laudo gerado.", oficina),
-            (
-                Garantia.Status.ABERTA,
-                Garantia.Status.ENVIADA,
-                "NF remessa 87002 vinculada.",
-                admin,
-            ),
-            (
-                Garantia.Status.ENVIADA,
-                Garantia.Status.EM_ANALISE,
-                "Fornecedor em análise.",
-                admin,
-            ),
-        ]
-        for i, (ant, novo, desc, user) in enumerate(eventos):
-            ev = EventoGarantia.objects.create(
-                garantia=g,
-                usuario=user,
-                status_anterior=ant,
-                status_novo=novo,
-                descricao=desc,
-            )
-            EventoGarantia.objects.filter(pk=ev.pk).update(data=criado + timedelta(days=i * 5))
+            self.stdout.write(f"Removidas {removidas} garantias de demonstração.")
 
         from apps.core.prazo_garantia import ensure_regra_padrao_externo
 
@@ -243,7 +156,7 @@ class Command(BaseCommand):
             "compras/compras123 | direcao/direcao123"
         )
         self.stdout.write(
-            f"Garantias: {Garantia.objects.count()} "
-            f"(exemplo Globus: GAR-2026-0131 / peça 01111011)"
+            f"Cadastros: {Garantia.objects.count()} garantia(s) · "
+            f"peça base {peca.codigo_interno} · veículos Globus de exemplo ok"
         )
         self.stdout.write("RegraPrazoGarantia padrao: tipo_servico=externo -> 180 dias")

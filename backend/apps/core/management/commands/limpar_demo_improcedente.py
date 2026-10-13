@@ -1,4 +1,4 @@
-"""Remove garantias de demo/teste que poluem o relatório Custo do erro interno."""
+"""Remove garantias de demo/teste da lista e do relatório."""
 
 from django.core.management.base import BaseCommand
 from django.db.models import Q
@@ -8,8 +8,8 @@ from apps.core.models import Garantia
 
 class Command(BaseCommand):
     help = (
-        "Apaga garantias de teste (GAR-TEST-*) e a demo GAR-2026-0131 "
-        "somente se ainda estiver improcedente — limpa o KPI falso."
+        "Apaga garantias demo/teste: GAR-2026-0131 e qualquer GAR-TEST-* "
+        "(some da lista Minhas NFs e do Custo do erro interno)."
     )
 
     def add_arguments(self, parser):
@@ -20,13 +20,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        # Não apaga GAR-2026-0131 em em_analise/enviada (seed válido).
         qs = Garantia.objects.filter(
-            Q(protocolo__startswith="GAR-TEST-")
-            | Q(
-                protocolo="GAR-2026-0131",
-                status=Garantia.Status.IMPROCEDENTE,
-            )
+            Q(protocolo="GAR-2026-0131") | Q(protocolo__startswith="GAR-TEST-")
         )
         rows = list(qs.values_list("id", "protocolo", "status", "valor_peca"))
         if not rows:
