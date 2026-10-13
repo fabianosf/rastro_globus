@@ -6,16 +6,10 @@ from django.db.models import Q
 from apps.core.models import Garantia
 
 
-PROTOCOLOS_EXATOS = (
-    "GAR-2026-0131",
-    "GAR-TEST-IMP-001",
-)
-
-
 class Command(BaseCommand):
     help = (
-        "Apaga garantias demo/teste (GAR-2026-0131, GAR-TEST-*, etc.) "
-        "para limpar o KPI de improcedentes fictícios."
+        "Apaga garantias de teste (GAR-TEST-*) e a demo GAR-2026-0131 "
+        "somente se ainda estiver improcedente — limpa o KPI falso."
     )
 
     def add_arguments(self, parser):
@@ -26,8 +20,13 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        # Não apaga GAR-2026-0131 em em_analise/enviada (seed válido).
         qs = Garantia.objects.filter(
-            Q(protocolo__in=PROTOCOLOS_EXATOS) | Q(protocolo__startswith="GAR-TEST-")
+            Q(protocolo__startswith="GAR-TEST-")
+            | Q(
+                protocolo="GAR-2026-0131",
+                status=Garantia.Status.IMPROCEDENTE,
+            )
         )
         rows = list(qs.values_list("id", "protocolo", "status", "valor_peca"))
         if not rows:
