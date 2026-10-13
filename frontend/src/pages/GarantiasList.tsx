@@ -205,15 +205,15 @@ export default function GarantiasList() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-muted">NFs que você cadastrou no SGGI · {periodoLabel}</p>
-          <p className="text-xs text-muted">Edite ou exclua se errou.</p>
+          <p className="text-sm text-muted">Garantias no SGGI · {periodoLabel}</p>
+          <p className="text-xs text-muted">Fluxo: remessa → análise → fechar.</p>
         </div>
         {canCreateGarantia(user?.perfil) ? (
           <Link
             to="/garantias/nova-danfe"
             className="rounded-lg bg-cyan px-4 py-2 text-sm font-semibold text-bg"
           >
-            Registrar DANFE
+            Nova remessa
           </Link>
         ) : null}
       </div>
@@ -340,10 +340,25 @@ export default function GarantiasList() {
             })}
             {!loading && !rows.length ? (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-muted">
-                  Nenhuma NF cadastrada
-                  {statusEmptyLabel ? ` com status “${statusEmptyLabel}”` : ""}
-                  {` em ${periodoLabel}`}. Use Registrar DANFE.
+                <td colSpan={8} className="px-3 py-10 text-center">
+                  <p className="text-base font-medium text-ink">Nenhuma garantia ainda</p>
+                  <p className="mt-1 text-sm text-muted">
+                    {statusEmptyLabel
+                      ? `Nenhum caso “${statusEmptyLabel}” em ${periodoLabel}.`
+                      : `Nada em ${periodoLabel}.`}
+                  </p>
+                  {canCreateGarantia(user?.perfil) ? (
+                    <Link
+                      to="/garantias/nova-danfe"
+                      className="mt-4 inline-block rounded-lg bg-cyan px-5 py-2.5 text-sm font-semibold text-bg"
+                    >
+                      Registrar nova remessa
+                    </Link>
+                  ) : (
+                    <p className="mt-3 text-xs text-muted">
+                      Peça à oficina ou manutenção para cadastrar a remessa.
+                    </p>
+                  )}
                 </td>
               </tr>
             ) : null}

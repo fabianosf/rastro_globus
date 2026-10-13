@@ -253,10 +253,9 @@ class ScreenFrame(Flowable):
         self.height = height
         self.menus = [
             "Minhas NFs",
-            "Registrar DANFE",
-            "Alertas de reincidência",
+            "Nova remessa",
+            "Reincidências",
             "Relatórios",
-            "Custo do erro interno",
         ]
 
     def draw(self):
@@ -555,10 +554,12 @@ def build():
             ["Menu", "Para quê"],
             [
                 ["Minhas NFs", "Ver todas as garantias cadastradas"],
-                ["Registrar DANFE", "Cadastrar a remessa em garantia (oficina/manutenção)"],
-                ["Alertas de reincidência", "Mesma peça no mesmo veículo no prazo"],
-                ["Relatórios", "Rankings e visão consolidada"],
-                ["Custo do erro interno", "Quanto a empresa perdeu com improcedentes"],
+                ["Nova remessa", "Cadastrar a remessa (DANFE) — oficina/manutenção"],
+                ["Reincidências", "Mesma peça no mesmo veículo no prazo"],
+                [
+                    "Relatórios",
+                    "Abas: Custo do erro interno (padrão) e Rankings",
+                ],
             ],
             st,
             [4.5 * cm, 12 * cm],
@@ -619,7 +620,7 @@ def build():
     story.append(Paragraph("5. Registrar DANFE (remessa)", st["h1"]))
     story.append(
         Paragraph(
-            "Use quando a DANFE de remessa em garantia foi emitida. Menu → <b>Registrar DANFE</b>.",
+            "Use quando a DANFE de remessa em garantia foi emitida. Menu → <b>Nova remessa</b>.",
             st["body"],
         )
     )
@@ -633,10 +634,10 @@ def build():
     story.append(Spacer(1, 6))
     story.append(
         ScreenFrame(
-            "Registrar DANFE",
-            "Registrar DANFE",
+            "Nova remessa",
+            "Nova remessa",
             [
-                "## Remessa em garantia",
+                "## Remessa em garantia (DANFE)",
                 "· Nº NF remessa: [ 87002____________ ]",
                 "· [ Buscar no Globus ]",
                 "· Peça / CARRO / Fornecedor / Valor",
@@ -699,15 +700,14 @@ def build():
             "Ficha da NF",
             "Minhas NFs",
             [
-                "## Histórico Globus (peça / veículo)",
-                "· Peça 01111011 · Veículo 47624",
-                "· Alertas de reincidência (se houver)",
-                "· Tabela: últimas saídas no CARRO",
-                "· Tabela: últimas compras da peça",
+                "## ▸ Consultar histórico no Globus (opcional)",
+                "· Recolhido por padrão — abra se precisar",
+                "· Peça · Veículo · reincidências",
+                "· Saídas e compras (espelho)",
                 "",
                 "ok Consulta só leitura — não altera estoque",
             ],
-            buttons=["Atualizar espelho", "Atualizar do Globus (ao vivo)"],
+            buttons=["Atualizar espelho", "Ao vivo"],
             highlight="Atualizar espelho",
             height=6.5 * cm,
         )
@@ -784,8 +784,8 @@ def build():
                 "",
                 "!! Exige NF de remessa + laudo",
             ],
-            buttons=["Encerrar como improcedente (fornecedor já respondeu)"],
-            highlight="Encerrar como improcedente (fornecedor já respondeu)",
+            buttons=["Fechar improcedente agora"],
+            highlight="Fechar improcedente agora",
             height=6.2 * cm,
         )
     )
@@ -804,14 +804,14 @@ def build():
     story.append(
         Paragraph(
             "Mesma peça aplicada de novo no <b>mesmo veículo</b> dentro do prazo. "
-            "Menu → <b>Alertas de reincidência</b> (badge com quantidade de novos).",
+            "Menu → <b>Reincidências</b> (badge com quantidade de novos).",
             st["body"],
         )
     )
     story.append(
         ScreenFrame(
-            "Alertas de reincidência",
-            "Alertas de reincidência",
+            "Reincidências",
+            "Reincidências",
             [
                 "## KPIs: Novos | Garantias abertas | Valor estimado",
                 "· Filtros: status, peça, fornecedor, empresa",
@@ -832,20 +832,20 @@ def build():
     story.append(Paragraph("11. Custo do erro interno", st["h1"]))
     story.append(
         Paragraph(
-            "Menu → <b>Custo do erro interno</b>. Soma as garantias já fechadas como "
-            "<b>improcedente</b> no ano (custo da empresa).",
+            "Menu → <b>Relatórios</b> (aba Custo do erro interno). Soma as garantias "
+            "já fechadas como <b>improcedente</b> no ano (custo da empresa).",
             st["body"],
         )
     )
     story.append(
         ScreenFrame(
             "Custo do erro interno",
-            "Custo do erro interno",
+            "Relatórios",
             [
-                "## Ano [ 2026 ▼ ]  [ Imprimir ]",
-                "· Custo total · Quantidade · % cobrado · Valor recuperado",
-                "· Gráficos: por causa · por mês",
-                "· Top peças · Top veículos · Top responsáveis",
+                "## Abas: Custo do erro interno | Rankings",
+                "· Ano [ 2026 ▼ ]  [ Imprimir ]",
+                "· Custo total · Quantidade · % cobrado",
+                "· Gráficos e tops",
                 "",
                 "ok Só entra caso real fechado como improcedente",
             ],

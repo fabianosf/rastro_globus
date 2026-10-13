@@ -117,9 +117,44 @@ type Garantia = {
 };
 
 const STATUS_ABERTO = new Set(["aberta", "enviada", "em_analise"]);
+const STATUS_FECHADO = new Set(["procedente", "improcedente", "cortesia", "cancelada"]);
 
 const field =
   "w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-cyan";
+
+function textoProximoPasso(
+  status: string,
+  opts: { allowAdvance: boolean; allowClose: boolean; perfil?: string | null }
+): string {
+  if (STATUS_FECHADO.has(status)) {
+    return "Caso encerrado. Consulte a timeline e os anexos abaixo.";
+  }
+  if (status === "aberta") {
+    if (opts.allowAdvance) {
+      return "Próximo passo: confirme a NF de remessa e marque como enviada.";
+    }
+    return "Aguardando Compras marcar como enviada (com NF de remessa).";
+  }
+  if (status === "enviada") {
+    if (opts.allowClose) {
+      return "Próximo passo: marcar em análise, ou fechar improcedente agora se o fornecedor já respondeu.";
+    }
+    if (opts.allowAdvance) {
+      return "Próximo passo: marcar em análise. Depois a manutenção fecha o caso.";
+    }
+    return "Aguardando avançar para em análise.";
+  }
+  if (status === "em_analise") {
+    if (opts.allowClose) {
+      return "Próximo passo: fechar como procedente, improcedente ou cortesia.";
+    }
+    return "Aguardando manutenção (ou admin) fechar o caso.";
+  }
+  if (opts.perfil === "direcao") {
+    return "Seu perfil é somente leitura nas decisões.";
+  }
+  return "Acompanhe o fluxo da garantia.";
+}
 
 export default function GarantiaFicha() {
   const { id } = useParams();
@@ -655,7 +690,12 @@ export default function GarantiaFicha() {
   if (loading) return <p className="text-muted">Carregando ficha...</p>;
   if (!g) return <p className="text-red">{error || "Garantia não encontrada."}</p>;
 
-  const showEstoqueWarning = g.status !== "procedente";
+  const proximoPasso = textoProximoPasso(g.status, {
+    allowAdvance,
+    allowClose,
+    perfil,
+  });
+  const casoFechado = STATUS_FECHADO.has(g.status);
 
   return (
     <div className="space-y-6">
@@ -684,16 +724,10 @@ export default function GarantiaFicha() {
         </div>
       </div>
 
-      {showEstoqueWarning ? (
-        <div className="rounded-lg border border-amber/40 bg-amber/10 px-4 py-3 text-sm text-amber">
-          Estoque do Globo não deve ser movimentado neste status.
-        </div>
-      ) : (
-        <div className="rounded-lg border border-green/40 bg-green/10 px-4 py-3 text-sm text-green">
-          Procedente: informe apenas o número espelho da NF de entrada no Globo (texto). O
-          SGGI não movimenta estoque.
-        </div>
-      )}
+      <div className="rounded-xl border border-cyan/30 bg-cyan/5 px-4 py-3">
+        <p className="text-sm font-medium text-ink">{proximoPasso}</p>
+        <p className="mt-1 text-xs text-muted">Não altera estoque Globus.</p>
+      </div>
 
       {error ? <p className="text-sm text-red">{error}</p> : null}
       {msg ? <p className="text-sm text-green">{msg}</p> : null}
@@ -952,20 +986,19 @@ export default function GarantiaFicha() {
         </section>
       </div>
 
-      <section
+      <details
         id="historico-globus"
-        className="space-y-3 rounded-xl border border-line bg-panel p-4 scroll-mt-4"
+        className="rounded-xl border border-line bg-panel p-4 scroll-mt-4"
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="font-semibold">Histórico Globus (peça / veículo)</h3>
-            <p className="text-xs text-muted">
-              Consulta somente leitura no espelho MariaDB. Não altera estoque. Use para
-              ver se a peça já saiu neste CARRO ou se há alerta de reincidência — o laudo
-              continua humano.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+        <summary className="cursor-pointer list-none font-semibold marker:content-none [&::-webkit-details-marker]:hidden">
+          <span className="text-cyan">▸ </span>
+          Consultar histórico no Globus (opcional)
+          <span className="mt-1 block text-xs font-normal text-muted">
+            Só leitura — saídas, compras e reincidência desta peça/CARRO.
+          </span>
+        </summary>
+        <div className="mt-3 space-y-3 border-t border-line pt-3">
+        <div className="flex flex-wrap gap-2">
             <button
               type="button"
               disabled={histLoading}
@@ -983,7 +1016,6 @@ export default function GarantiaFicha() {
               {histLoading && histAoVivo ? "Consultando…" : "Atualizar do Globus (ao vivo)"}
             </button>
           </div>
-        </div>
 
         {histError ? <p className="text-sm text-red">{histError}</p> : null}
         {histLoading && !histGlobus ? (
@@ -1134,7 +1166,8 @@ export default function GarantiaFicha() {
             <p className="text-[11px] text-muted">{histGlobus.aviso}</p>
           </div>
         ) : null}
-      </section>
+        </div>
+      </details>
 
       <section
         id="acoes"
@@ -1142,33 +1175,14 @@ export default function GarantiaFicha() {
       >
         <div>
           <h3 className="font-semibold">Ações</h3>
-          <p className="text-xs text-muted">
-            Decisão no SGGI — não grava estoque Globus. Fluxo: Oficina cadastra → Compras
-            avança → Manutenção fecha.
-          </p>
+          <p className="text-xs text-muted">Só o que dá para fazer agora — não altera estoque Globus.</p>
         </div>
 
-        {!allowClose && g.status === "em_analise" ? (
-          <div className="rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-xs text-amber">
-            Esta garantia está em análise. Apenas manutenção (ou admin) pode fechar como
-            procedente / improcedente / cortesia.
-          </div>
+        {casoFechado ? (
+          <p className="text-sm text-muted">Nenhuma ação de status disponível (caso fechado).</p>
         ) : null}
 
-        {!allowClose && g.status !== "em_analise" && !["procedente", "improcedente", "cortesia", "cancelada"].includes(g.status) ? (
-          <div className="rounded-lg border border-line bg-bg/60 px-3 py-2 text-xs text-muted">
-            Próximo passo:{" "}
-            {g.status === "aberta"
-              ? "Compras vincula NF de remessa e marca como enviada."
-              : g.status === "enviada"
-                ? "Compras/manutenção marca em análise; depois manutenção fecha."
-                : "Aguarde o fluxo operacional."}
-            {perfil === "direcao" ? " Seu perfil (direção) é somente leitura nas decisões." : ""}
-          </div>
-        ) : null}
-
-        {allowEdit &&
-        !["procedente", "improcedente", "cortesia", "cancelada"].includes(g.status) ? (
+        {allowEdit && !casoFechado ? (
           <div className="space-y-2 border-b border-line pb-3">
             <label className="block text-xs text-muted">
               Laudo (resumo) — obrigatório para improcedente
@@ -1224,13 +1238,13 @@ export default function GarantiaFicha() {
             )}
 
             {allowClose && (g.status === "aberta" || g.status === "enviada") && (
-              <div className="space-y-3 rounded-lg border border-red/30 bg-red/5 p-3">
-                <h4 className="text-sm font-semibold text-red">
-                  Encerrar como improcedente (fornecedor já respondeu)
-                </h4>
-                <p className="text-xs text-muted">
-                  Avança aberta → enviada → em análise → improcedente em um passo, com
-                  histórico completo. Exige NF de remessa e laudo. Não grava estoque Globus.
+              <details className="space-y-3 rounded-lg border border-red/30 bg-red/5 p-3">
+                <summary className="cursor-pointer text-sm font-semibold text-red">
+                  Fechar improcedente agora
+                </summary>
+                <p className="mt-2 text-xs text-muted">
+                  Use se o fornecedor já respondeu. Exige NF de remessa e laudo. Gera o
+                  histórico completo em um passo.
                 </p>
                 {!g.nf_remessa && !nfRemessa ? (
                   <p className="text-xs text-amber">
@@ -1343,26 +1357,20 @@ export default function GarantiaFicha() {
                 <button
                   type="button"
                   disabled={savingDireto || (!g.nf_remessa && !nfRemessa)}
-                  className="rounded-lg bg-red/20 px-4 py-2 text-sm text-red disabled:opacity-60"
+                  className="mt-2 rounded-lg bg-red/20 px-4 py-2 text-sm text-red disabled:opacity-60"
                   onClick={() => fecharImprocedenteDireto()}
                 >
-                  {savingDireto
-                    ? "Encerrando…"
-                    : "Encerrar como improcedente (fornecedor já respondeu)"}
+                  {savingDireto ? "Encerrando…" : "Fechar improcedente agora"}
                 </button>
-              </div>
+              </details>
             )}
 
             {allowClose && g.status === "em_analise" && (
               <div className="space-y-4">
-                <p className="text-sm font-medium text-ink">
-                  Decisão no SGGI — não grava estoque Globus
-                </p>
-
                 <div className="space-y-3 rounded-lg border border-green/30 bg-green/5 p-3">
                   <h4 className="text-sm font-semibold text-green">Fechar procedente</h4>
                   <p className="text-xs text-muted">
-                    Informe o número espelho da NF de entrada no Globo (texto). Não movimenta estoque.
+                    Informe o nº espelho da NF de entrada no Globo (só texto).
                   </p>
                   <div>
                     <label className="mb-1 block text-xs text-muted">NF entrada Globo</label>

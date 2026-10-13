@@ -7,8 +7,7 @@ import GarantiaFicha from "./pages/GarantiaFicha";
 import GarantiaNova from "./pages/GarantiaNova";
 import GarantiasList from "./pages/GarantiasList";
 import Login from "./pages/Login";
-import RelatorioErroInterno from "./pages/RelatorioErroInterno";
-import RelatorioRankings from "./pages/RelatorioRankings";
+import Relatorios from "./pages/Relatorios";
 
 function Protected() {
   const { isAuthenticated } = useAuth();
@@ -21,11 +20,10 @@ function Protected() {
 
 function titleFor(pathname: string) {
   if (pathname === "/" || pathname === "/garantias") return "Minhas NFs";
-  if (pathname.startsWith("/garantias/nova-danfe")) return "Registrar DANFE";
+  if (pathname.startsWith("/garantias/nova-danfe")) return "Nova remessa";
   if (pathname.startsWith("/garantias/nova")) return "Formulário completo";
   if (pathname.match(/^\/garantias\/\d+/)) return "Ficha da NF";
-  if (pathname.startsWith("/alertas-reincidencia")) return "Alertas de reincidência";
-  if (pathname.startsWith("/relatorios/erro-interno")) return "Custo do erro interno";
+  if (pathname.startsWith("/alertas-reincidencia")) return "Reincidências";
   if (pathname.startsWith("/relatorios")) return "Relatórios";
   return "SGGI";
 }
@@ -47,8 +45,11 @@ export default function App() {
             <Route path="/garantias/nova-danfe" element={<GarantiaDanfe />} />
             <Route path="/garantias/nova" element={<GarantiaNova />} />
             <Route path="/garantias/:id" element={<GarantiaFicha />} />
-            <Route path="/relatorios" element={<RelatorioRankings />} />
-            <Route path="/relatorios/erro-interno" element={<RelatorioErroInterno />} />
+            <Route path="/relatorios" element={<Relatorios />} />
+            <Route
+              path="/relatorios/erro-interno"
+              element={<Navigate to="/relatorios?aba=erro-interno" replace />}
+            />
             <Route path="/alertas-reincidencia" element={<AlertasReincidencia />} />
             {/* Fora do MVP / Dashboard antigo: redirect */}
             <Route path="/dashboard" element={<Navigate to="/" replace />} />

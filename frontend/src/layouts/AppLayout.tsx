@@ -22,6 +22,9 @@ export default function AppLayout({ title }: { title?: string }) {
       isActive ? "bg-cyan/15 text-cyan" : "text-muted hover:bg-line/40 hover:text-text"
     }`;
 
+  const relatoriosActive =
+    location.pathname.startsWith("/relatorios");
+
   return (
     <div className="flex min-h-screen bg-bg">
       <aside className="no-print flex w-60 shrink-0 flex-col border-r border-line bg-panel">
@@ -40,12 +43,12 @@ export default function AppLayout({ title }: { title?: string }) {
           </NavLink>
           {canNova ? (
             <NavLink to="/garantias/nova-danfe" className={navClass}>
-              Registrar DANFE
+              Nova remessa
             </NavLink>
           ) : null}
           <NavLink to="/alertas-reincidencia" className={navClass}>
             <span className="flex items-center justify-between gap-2">
-              <span>Alertas de reincidência</span>
+              <span>Reincidências</span>
               {alertasNovos > 0 ? (
                 <span className="rounded-md bg-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber">
                   {alertasNovos}
@@ -53,17 +56,23 @@ export default function AppLayout({ title }: { title?: string }) {
               ) : null}
             </span>
           </NavLink>
-          <NavLink to="/relatorios" className={navClass}>
+          <NavLink
+            to="/relatorios?aba=erro-interno"
+            className={() =>
+              `rounded-lg px-3 py-2 text-sm transition ${
+                relatoriosActive
+                  ? "bg-cyan/15 text-cyan"
+                  : "text-muted hover:bg-line/40 hover:text-text"
+              }`
+            }
+          >
             Relatórios
-          </NavLink>
-          <NavLink to="/relatorios/erro-interno" className={navClass}>
-            Custo do erro interno
           </NavLink>
         </nav>
         <div className="border-t border-line p-4 text-xs text-muted">
-          Cadastre a DANFE, edite ou exclua.
+          Cadastre a remessa e acompanhe até o fechamento.
           <br />
-          Sem histórico da planilha.
+          Não altera estoque Globus.
         </div>
       </aside>
 

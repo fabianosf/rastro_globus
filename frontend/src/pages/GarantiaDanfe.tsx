@@ -444,7 +444,7 @@ export default function GarantiaDanfe() {
     <div className="mx-auto max-w-2xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold">Registrar a partir da DANFE</h2>
+          <h2 className="text-lg font-semibold">Nova remessa (DANFE)</h2>
           <p className="text-xs text-muted">
             Digite a DANFE e salve no SGGI. Se o código da peça existir, a descrição preenche.
             CARRO: informe o número. Abre como <span className="text-amber">enviada</span>.

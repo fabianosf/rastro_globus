@@ -6,13 +6,11 @@
 
 | Onde | Uso |
 |------|-----|
-| **Menu** | Dashboard, garantias, **Alertas de reincidência**, **Custo do erro interno** |
-| **SGGI ao vivo** | Fila, KPIs · CTAs: Abrir fila · Todas as garantias · **Registrar DANFE** · Nova garantia |
-| **Alertas de reincidência** | `/alertas-reincidencia` — mesma peça/veículo no prazo; descarte com motivo |
-| **Custo do erro interno** | `/relatorios/erro-interno` — improcedentes (custo da empresa) por causa/mês |
-| **Histórico e export** | Planilha + cruzamento improcedentes × compras + CSV / Imprimir PDF |
-| **Rotas** | `/garantias`, `/garantias/nova-danfe`, `/garantias/nova`, `/garantias/:id` |
-| **Ficha → Histórico Globus** | Saídas/compras do espelho + alertas de reincidência (só leitura); botão ao vivo opcional |
+| **Menu** | Minhas NFs · **Nova remessa** · **Reincidências** · **Relatórios** (abas) |
+| **Relatórios** | `/relatorios` — aba padrão Custo do erro interno; aba Rankings |
+| **Reincidências** | `/alertas-reincidencia` — mesma peça/veículo no prazo; descarte com motivo |
+| **Rotas** | `/`, `/garantias/nova-danfe`, `/garantias/:id` |
+| **Ficha** | Próximo passo no topo; Histórico Globus recolhido; ações só do status atual |
 
 Fora do app (redirect): regras de prazo, movimentos Globus soltos, relatórios soltos.
 
