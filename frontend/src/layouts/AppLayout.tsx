@@ -1,11 +1,26 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { canCreateGarantia } from "../auth/permissions";
 
 export default function AppLayout({ title }: { title?: string }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const canNova = canCreateGarantia(user?.perfil);
+  const [alertasNovos, setAlertasNovos] = useState(0);
+
+  useEffect(() => {
+    api<{ count: number }>("/api/alertas-reincidencia/novos-count/")
+      .then((r) => setAlertasNovos(r.count || 0))
+      .catch(() => setAlertasNovos(0));
+  }, [location.pathname]);
+
+  const navClass = ({ isActive }: { isActive: boolean }) =>
+    `rounded-lg px-3 py-2 text-sm transition ${
+      isActive ? "bg-cyan/15 text-cyan" : "text-muted hover:bg-line/40 hover:text-text"
+    }`;
 
   return (
     <div className="flex min-h-screen bg-bg">
@@ -20,44 +35,29 @@ export default function AppLayout({ title }: { title?: string }) {
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-3">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) =>
-              `rounded-lg px-3 py-2 text-sm transition ${
-                isActive
-                  ? "bg-cyan/15 text-cyan"
-                  : "text-muted hover:bg-line/40 hover:text-text"
-              }`
-            }
-          >
+          <NavLink to="/" end className={navClass}>
             Minhas NFs
           </NavLink>
           {canNova ? (
-            <NavLink
-              to="/garantias/nova-danfe"
-              className={({ isActive }) =>
-                `rounded-lg px-3 py-2 text-sm transition ${
-                  isActive
-                    ? "bg-cyan/15 text-cyan"
-                    : "text-muted hover:bg-line/40 hover:text-text"
-                }`
-              }
-            >
+            <NavLink to="/garantias/nova-danfe" className={navClass}>
               Registrar DANFE
             </NavLink>
           ) : null}
-          <NavLink
-            to="/relatorios"
-            className={({ isActive }) =>
-              `rounded-lg px-3 py-2 text-sm transition ${
-                isActive
-                  ? "bg-cyan/15 text-cyan"
-                  : "text-muted hover:bg-line/40 hover:text-text"
-              }`
-            }
-          >
+          <NavLink to="/alertas-reincidencia" className={navClass}>
+            <span className="flex items-center justify-between gap-2">
+              <span>Alertas de reincidência</span>
+              {alertasNovos > 0 ? (
+                <span className="rounded-md bg-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber">
+                  {alertasNovos}
+                </span>
+              ) : null}
+            </span>
+          </NavLink>
+          <NavLink to="/relatorios" className={navClass}>
             Relatórios
+          </NavLink>
+          <NavLink to="/relatorios/erro-interno" className={navClass}>
+            Custo do erro interno
           </NavLink>
         </nav>
         <div className="border-t border-line p-4 text-xs text-muted">

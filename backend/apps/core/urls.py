@@ -25,6 +25,7 @@ from .views import (
     RankingPecasView,
     RankingVeiculosView,
     RegraPrazoGarantiaViewSet,
+    RelatorioErroInternoView,
     RelatorioHistoricoView,
     RelatorioRankingsView,
     RelatorioResumoView,
@@ -49,6 +50,11 @@ urlpatterns = [
     path("relatorios/ranking-pecas/", RankingPecasView.as_view(), name="relatorios-ranking-pecas"),
     path("relatorios/ranking-veiculos/", RankingVeiculosView.as_view(), name="relatorios-ranking-veiculos"),
     path("relatorios/rankings/", RelatorioRankingsView.as_view(), name="relatorios-rankings"),
+    path(
+        "relatorios/erro-interno/",
+        RelatorioErroInternoView.as_view(),
+        name="relatorios-erro-interno",
+    ),
     path("relatorios/export.csv/", ExportCsvView.as_view(), name="relatorios-export"),
     path(
         "relatorios/improcedentes-compras/",

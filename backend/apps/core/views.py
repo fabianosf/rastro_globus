@@ -7,6 +7,7 @@ from decimal import Decimal
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q, Sum
+from django.db.models.functions import Coalesce, ExtractMonth, TruncDate
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -62,7 +63,7 @@ from .serializers import (
     VeiculoSerializer,
     VincularNotaSerializer,
 )
-from .services import mudar_status, proximo_protocolo
+from .services import fechar_improcedente_direto, mudar_status, proximo_protocolo
 
 
 class LoginView(APIView):
@@ -410,7 +411,7 @@ class GarantiaViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), CanCreateGarantia()]
         if self.action in ("partial_update", "update", "destroy"):
             return [IsAuthenticated(), CanEditGarantia()]
-        if self.action == "status":
+        if self.action in ("status", "fechar_improcedente_direto_action"):
             return [IsAuthenticated(), CanChangeStatus()]
         if self.action == "anexos":
             return [IsAuthenticated(), CanAnexar()]
@@ -700,6 +701,49 @@ class GarantiaViewSet(viewsets.ModelViewSet):
             if not garantia.data_retorno:
                 garantia.data_retorno = data["data_emissao"]
         garantia.save()
+        return Response(GarantiaDetailSerializer(garantia, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path="fechar-improcedente-direto")
+    def fechar_improcedente_direto_action(self, request, pk=None):
+        """Atalho: aberta/enviada/em_analise → improcedente com timeline completa."""
+        garantia = self.get_object()
+        nf_retorno = None
+        raw_nf = request.data.get("nf_retorno")
+        if isinstance(raw_nf, dict):
+            nf_retorno = raw_nf
+        elif request.data.get("nf_retorno_numero"):
+            nf_retorno = {
+                "numero": request.data.get("nf_retorno_numero"),
+                "serie": request.data.get("nf_retorno_serie", ""),
+                "data_emissao": request.data.get("nf_retorno_data") or None,
+            }
+
+        cobranca_raw = request.data.get("cobranca_interna", False)
+        if isinstance(cobranca_raw, str):
+            cobranca = cobranca_raw.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            cobranca = bool(cobranca_raw)
+
+        try:
+            fechar_improcedente_direto(
+                garantia,
+                request.user,
+                laudo_resumo=request.data.get("laudo_resumo") or "",
+                laudo_pdf=request.FILES.get("laudo_pdf"),
+                nf_retorno=nf_retorno,
+                descricao=request.data.get("descricao") or "",
+                motivo_improcedente=request.data.get("motivo_improcedente") or "",
+                causa_improcedente=request.data.get("causa_improcedente") or "",
+                responsavel_tipo=request.data.get("responsavel_tipo") or "",
+                responsavel_nome=request.data.get("responsavel_nome") or "",
+                cobranca_interna=cobranca,
+                observacao_cobranca=request.data.get("observacao_cobranca") or "",
+            )
+        except DjangoValidationError as exc:
+            msg = exc.messages[0] if hasattr(exc, "messages") else str(exc)
+            return Response({"detail": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        garantia.refresh_from_db()
         return Response(GarantiaDetailSerializer(garantia, context={"request": request}).data)
 
 
@@ -1037,6 +1081,159 @@ class RelatorioRankingsView(APIView):
                 "pecas": pecas,
                 "veiculos": veiculos,
                 "total_garantias": total,
+            }
+        )
+
+
+class RelatorioErroInternoView(APIView):
+    """Custo das garantias improcedentes (erro interno da empresa)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            ano = int(request.query_params.get("ano") or timezone.now().year)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Parâmetro ano inválido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = (
+            Garantia.objects.filter(status=Garantia.Status.IMPROCEDENTE)
+            .annotate(data_ref=Coalesce("data_retorno", TruncDate("criado_em")))
+            .filter(data_ref__year=ano)
+            .select_related("peca", "veiculo")
+        )
+
+        total = qs.count()
+        valor_total = qs.aggregate(t=Sum("valor_peca"))["t"] or Decimal("0")
+        sem_valor = qs.filter(valor_peca__isnull=True).count()
+
+        cobrados_qs = qs.filter(cobranca_interna=True)
+        nao_cobrados_qs = qs.filter(cobranca_interna=False)
+        valor_cobrado = cobrados_qs.aggregate(t=Sum("valor_peca"))["t"] or Decimal("0")
+        valor_nao_cobrado = nao_cobrados_qs.aggregate(t=Sum("valor_peca"))["t"] or Decimal("0")
+
+        causa_labels = dict(Garantia.CausaImprocedente.choices)
+        tipo_labels = dict(Garantia.ResponsavelTipo.choices)
+
+        por_causa = [
+            {
+                "causa": r["causa_improcedente"] or "",
+                "label": causa_labels.get(r["causa_improcedente"], r["causa_improcedente"] or "Não informado"),
+                "total": r["total"],
+                "valor": str(r["valor"] or 0),
+            }
+            for r in qs.values("causa_improcedente")
+            .annotate(total=Count("id"), valor=Sum("valor_peca"))
+            .order_by("-valor", "-total")
+        ]
+
+        por_responsavel_tipo = [
+            {
+                "tipo": r["responsavel_tipo"] or "",
+                "label": tipo_labels.get(r["responsavel_tipo"], r["responsavel_tipo"] or "Não informado"),
+                "total": r["total"],
+                "valor": str(r["valor"] or 0),
+            }
+            for r in qs.values("responsavel_tipo")
+            .annotate(total=Count("id"), valor=Sum("valor_peca"))
+            .order_by("-valor", "-total")
+        ]
+
+        top_responsaveis = [
+            {
+                "nome": r["responsavel_nome"],
+                "tipo": r["responsavel_tipo"] or "",
+                "total": r["total"],
+                "valor": str(r["valor"] or 0),
+            }
+            for r in qs.exclude(responsavel_nome="")
+            .values("responsavel_nome", "responsavel_tipo")
+            .annotate(total=Count("id"), valor=Sum("valor_peca"))
+            .order_by("-valor", "-total")[:10]
+        ]
+
+        top_pecas = [
+            {
+                "codigo": r["peca__codigo_interno"],
+                "descricao": r["peca__descricao"] or "",
+                "total": r["total"],
+                "valor": str(r["valor"] or 0),
+            }
+            for r in qs.values("peca_id", "peca__codigo_interno", "peca__descricao")
+            .annotate(total=Count("id"), valor=Sum("valor_peca"))
+            .order_by("-valor", "-total")[:10]
+        ]
+
+        top_veiculos = [
+            {
+                "codigo": r["veiculo__codigo"],
+                "casa": r["veiculo__casa"] or "",
+                "total": r["total"],
+                "valor": str(r["valor"] or 0),
+            }
+            for r in qs.values("veiculo_id", "veiculo__codigo", "veiculo__casa")
+            .annotate(total=Count("id"), valor=Sum("valor_peca"))
+            .order_by("-valor", "-total")[:10]
+        ]
+
+        meses_map = {
+            int(r["mes"]): {"total": r["total"], "valor": r["valor"] or Decimal("0")}
+            for r in qs.annotate(mes=ExtractMonth("data_ref"))
+            .values("mes")
+            .annotate(total=Count("id"), valor=Sum("valor_peca"))
+            if r["mes"]
+        }
+        por_mes = [
+            {
+                "mes": m,
+                "total": meses_map.get(m, {}).get("total", 0),
+                "valor": str(meses_map.get(m, {}).get("valor", Decimal("0"))),
+            }
+            for m in range(1, 13)
+        ]
+
+        procedentes_alerta = (
+            Garantia.objects.filter(
+                status=Garantia.Status.PROCEDENTE,
+                alerta_origem__isnull=False,
+            )
+            .annotate(data_ref=Coalesce("data_retorno", TruncDate("criado_em")))
+            .filter(data_ref__year=ano)
+        )
+        valor_recuperado = procedentes_alerta.aggregate(t=Sum("valor_peca"))["t"] or Decimal("0")
+        garantias_de_alertas = (
+            Garantia.objects.filter(alerta_origem__isnull=False)
+            .annotate(data_ref=Coalesce("data_retorno", TruncDate("criado_em")))
+            .filter(data_ref__year=ano)
+            .count()
+        )
+
+        return Response(
+            {
+                "ano": ano,
+                "total": total,
+                "valor_total": str(valor_total),
+                "sem_valor": sem_valor,
+                "cobranca": {
+                    "cobrados": cobrados_qs.count(),
+                    "valor_cobrado": str(valor_cobrado),
+                    "nao_cobrados": nao_cobrados_qs.count(),
+                    "valor_nao_cobrado": str(valor_nao_cobrado),
+                },
+                "por_causa": por_causa,
+                "por_responsavel_tipo": por_responsavel_tipo,
+                "top_responsaveis": top_responsaveis,
+                "top_pecas": top_pecas,
+                "top_veiculos": top_veiculos,
+                "por_mes": por_mes,
+                "reincidencia": {
+                    "alertas_novos": contagem_alertas_novos(),
+                    "garantias_de_alertas": garantias_de_alertas,
+                    "valor_recuperado": str(valor_recuperado),
+                },
             }
         )
 

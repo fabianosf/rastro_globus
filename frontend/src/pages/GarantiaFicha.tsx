@@ -118,6 +118,7 @@ export default function GarantiaFicha() {
   const [loadingNfsGarantia, setLoadingNfsGarantia] = useState(false);
   const [laudoEdit, setLaudoEdit] = useState("");
   const [savingLaudo, setSavingLaudo] = useState(false);
+  const [savingDireto, setSavingDireto] = useState(false);
 
   const perfil = user?.perfil;
   const allowNf = canVincularNf(perfil);
@@ -482,6 +483,61 @@ export default function GarantiaFicha() {
       await mudarStatus("enviada");
     } else if (g.status === "enviada") {
       await mudarStatus("em_analise");
+    }
+  }
+
+  async function fecharImprocedenteDireto() {
+    if (!g) return;
+    setError("");
+    setMsg("");
+    if (!g.nf_remessa && !nfRemessa) {
+      setError("Vincule a NF de remessa antes de encerrar.");
+      return;
+    }
+    if (nfRemessa && !g.nf_remessa) {
+      const ok = await vincularNota("remessa", nfRemessa);
+      if (!ok) return;
+    }
+    const temLaudo = Boolean((g.laudo_resumo || "").trim() || g.laudo_pdf);
+    const laudoDraft = (laudoEdit || "").trim();
+    if (!temLaudo && !laudoDraft) {
+      setError(
+        "Improcedente exige laudo (resumo ou PDF). Preencha o laudo na seção Ações antes de fechar."
+      );
+      return;
+    }
+    setSavingDireto(true);
+    try {
+      const body: Record<string, unknown> = {
+        descricao,
+        motivo_improcedente: motivo,
+        causa_improcedente: causa,
+        responsavel_tipo: respTipo,
+        responsavel_nome: respNome,
+        cobranca_interna: cobrancaInterna,
+        observacao_cobranca: obsCobranca,
+        laudo_resumo: laudoDraft || g.laudo_resumo || "",
+      };
+      if (nfRetorno.trim()) {
+        body.nf_retorno = {
+          numero: nfRetorno.trim(),
+          serie: "",
+          data_emissao: nfData,
+        };
+      }
+      const updated = await api<Garantia>(
+        `/api/garantias/${g.id}/fechar-improcedente-direto/`,
+        { method: "POST", body }
+      );
+      setG(updated);
+      setMsg("Garantia encerrada como improcedente (fluxo direto).");
+      setDescricao("");
+      setMotivo("");
+      setNfRetorno("");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao encerrar improcedente.");
+    } finally {
+      setSavingDireto(false);
     }
   }
 
@@ -869,6 +925,112 @@ export default function GarantiaFicha() {
                     Cancelar garantia
                   </button>
                 )}
+              </div>
+            )}
+
+            {allowClose && (g.status === "aberta" || g.status === "enviada") && (
+              <div className="space-y-3 rounded-lg border border-red/30 bg-red/5 p-3">
+                <h4 className="text-sm font-semibold text-red">
+                  Encerrar como improcedente (fornecedor já respondeu)
+                </h4>
+                <p className="text-xs text-muted">
+                  Avança aberta → enviada → em análise → improcedente em um passo, com
+                  histórico completo. Exige NF de remessa e laudo. Não grava estoque Globus.
+                </p>
+                {!g.nf_remessa ? (
+                  <p className="text-xs text-amber">
+                    Informe/vincule a NF de remessa (campo acima ou no avanço) antes de
+                    encerrar.
+                  </p>
+                ) : null}
+                {!((g.laudo_resumo || "").trim() || g.laudo_pdf || (laudoEdit || "").trim()) ? (
+                  <p className="text-xs text-amber">
+                    Laudo vazio — preencha o laudo acima antes de marcar improcedente.
+                  </p>
+                ) : null}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="text-xs">
+                    <span className="mb-1 block text-muted">Causa improcedente *</span>
+                    <select
+                      className={field}
+                      value={causa}
+                      onChange={(e) => setCausa(e.target.value)}
+                    >
+                      <option value="erro_aplicacao">Erro aplicacao (oficina)</option>
+                      <option value="erro_operacao">Erro operacao (motorista)</option>
+                      <option value="falha_sistemica_veiculo">Falha sistemica veiculo</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-1 block text-muted">Responsavel tipo *</span>
+                    <select
+                      className={field}
+                      value={respTipo}
+                      onChange={(e) => setRespTipo(e.target.value)}
+                    >
+                      <option value="oficina">Oficina</option>
+                      <option value="mecanico">Mecanico</option>
+                      <option value="motorista">Motorista</option>
+                      <option value="sistema">Sistema</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </label>
+                  <label className="text-xs sm:col-span-2">
+                    <span className="mb-1 block text-muted">Responsavel nome</span>
+                    <input
+                      className={field}
+                      value={respNome}
+                      onChange={(e) => setRespNome(e.target.value)}
+                      placeholder="Obrigatorio exceto tipo=sistema"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-xs sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={cobrancaInterna}
+                      onChange={(e) => setCobrancaInterna(e.target.checked)}
+                    />
+                    Cobranca interna
+                  </label>
+                  <label className="text-xs sm:col-span-2">
+                    <span className="mb-1 block text-muted">Obs. cobranca</span>
+                    <input
+                      className={field}
+                      value={obsCobranca}
+                      onChange={(e) => setObsCobranca(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-xs sm:col-span-2">
+                    <span className="mb-1 block text-muted">Motivo / detalhe</span>
+                    <input
+                      className={field}
+                      value={motivo}
+                      onChange={(e) => setMotivo(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-xs sm:col-span-2">
+                    <span className="mb-1 block text-muted">
+                      NF retorno do fornecedor (opcional)
+                    </span>
+                    <input
+                      className={field}
+                      value={nfRetorno}
+                      onChange={(e) => setNfRetorno(e.target.value)}
+                      placeholder="Número da NF de retorno"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  disabled={savingDireto}
+                  className="rounded-lg bg-red/20 px-4 py-2 text-sm text-red disabled:opacity-60"
+                  onClick={() => fecharImprocedenteDireto()}
+                >
+                  {savingDireto
+                    ? "Encerrando…"
+                    : "Encerrar como improcedente (fornecedor já respondeu)"}
+                </button>
               </div>
             )}
 

@@ -1,8 +1,10 @@
+from datetime import date, datetime
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import EventoGarantia, Garantia
+from .models import EventoGarantia, Garantia, NotaFiscal
 from .permissions import perfil_pode_status
 
 
@@ -162,5 +164,107 @@ def mudar_status(garantia, novo_status, usuario, descricao, **extras):
             descricao=descricao or f"Status alterado para {novo_status}",
             arquivo=extras.get("arquivo"),
         )
+
+    return garantia
+
+
+def _parse_data_emissao(raw) -> date:
+    if raw is None or raw == "":
+        return timezone.localdate()
+    if isinstance(raw, date) and not isinstance(raw, datetime):
+        return raw
+    if isinstance(raw, datetime):
+        return raw.date()
+    return date.fromisoformat(str(raw)[:10])
+
+
+def fechar_improcedente_direto(
+    garantia,
+    usuario,
+    *,
+    laudo_resumo="",
+    laudo_pdf=None,
+    nf_retorno=None,
+    descricao="",
+    **extras,
+):
+    """
+    Avança aberta→enviada→em_analise→improcedente (conforme status atual)
+    em uma única transação, gerando EventoGarantia em cada etapa via mudar_status.
+    Não altera TRANSICOES. Improcedente nunca preenche nf_entrada_globo.
+    """
+    status_ok = {
+        Garantia.Status.ABERTA,
+        Garantia.Status.ENVIADA,
+        Garantia.Status.EM_ANALISE,
+    }
+    if garantia.status not in status_ok:
+        raise ValidationError(
+            "Encerramento direto só é permitido com status aberta, enviada ou em_analise."
+        )
+
+    perfil = getattr(usuario, "perfil", None)
+    if not perfil_pode_status(perfil, Garantia.Status.IMPROCEDENTE):
+        raise ValidationError(
+            f"Perfil '{perfil}' não pode encerrar como improcedente."
+        )
+
+    if not garantia.nota_remessa_id:
+        raise ValidationError("Vincule a NF de remessa antes de encerrar.")
+
+    if garantia.status == Garantia.Status.ABERTA:
+        sequencia = [
+            Garantia.Status.ENVIADA,
+            Garantia.Status.EM_ANALISE,
+            Garantia.Status.IMPROCEDENTE,
+        ]
+    elif garantia.status == Garantia.Status.ENVIADA:
+        sequencia = [Garantia.Status.EM_ANALISE, Garantia.Status.IMPROCEDENTE]
+    else:
+        sequencia = [Garantia.Status.IMPROCEDENTE]
+
+    with transaction.atomic():
+        dirty = []
+        if laudo_resumo:
+            garantia.laudo_resumo = str(laudo_resumo).strip()
+            dirty.append("laudo_resumo")
+        if laudo_pdf is not None:
+            garantia.laudo_pdf = laudo_pdf
+            dirty.append("laudo_pdf")
+        if dirty:
+            garantia.save(update_fields=[*dirty, "atualizado_em"])
+
+        if isinstance(nf_retorno, dict) and str(nf_retorno.get("numero") or "").strip():
+            data_em = _parse_data_emissao(nf_retorno.get("data_emissao"))
+            nota, _ = NotaFiscal.objects.get_or_create(
+                numero=str(nf_retorno["numero"]).strip(),
+                serie=str(nf_retorno.get("serie") or "").strip(),
+                tipo=NotaFiscal.Tipo.RETORNO,
+                defaults={
+                    "data_emissao": data_em,
+                    "fornecedor": garantia.fornecedor,
+                },
+            )
+            garantia.nota_retorno = nota
+            if not garantia.data_retorno:
+                garantia.data_retorno = data_em
+            garantia.save(update_fields=["nota_retorno", "data_retorno", "atualizado_em"])
+
+        for i, novo_status in enumerate(sequencia):
+            is_last = i == len(sequencia) - 1
+            etapa_desc = (
+                f"Encerramento direto (fornecedor já respondeu): {novo_status}"
+            )
+            if is_last:
+                mudar_status(
+                    garantia,
+                    novo_status,
+                    usuario,
+                    descricao or etapa_desc,
+                    **extras,
+                )
+            else:
+                mudar_status(garantia, novo_status, usuario, etapa_desc)
+            garantia.refresh_from_db()
 
     return garantia

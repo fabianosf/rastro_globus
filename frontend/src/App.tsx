@@ -1,11 +1,13 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import AppLayout from "./layouts/AppLayout";
+import AlertasReincidencia from "./pages/AlertasReincidencia";
 import GarantiaDanfe from "./pages/GarantiaDanfe";
 import GarantiaFicha from "./pages/GarantiaFicha";
 import GarantiaNova from "./pages/GarantiaNova";
 import GarantiasList from "./pages/GarantiasList";
 import Login from "./pages/Login";
+import RelatorioErroInterno from "./pages/RelatorioErroInterno";
 import RelatorioRankings from "./pages/RelatorioRankings";
 
 function Protected() {
@@ -22,6 +24,8 @@ function titleFor(pathname: string) {
   if (pathname.startsWith("/garantias/nova-danfe")) return "Registrar DANFE";
   if (pathname.startsWith("/garantias/nova")) return "Formulário completo";
   if (pathname.match(/^\/garantias\/\d+/)) return "Ficha da NF";
+  if (pathname.startsWith("/alertas-reincidencia")) return "Alertas de reincidência";
+  if (pathname.startsWith("/relatorios/erro-interno")) return "Custo do erro interno";
   if (pathname.startsWith("/relatorios")) return "Relatórios";
   return "SGGI";
 }
@@ -44,9 +48,10 @@ export default function App() {
             <Route path="/garantias/nova" element={<GarantiaNova />} />
             <Route path="/garantias/:id" element={<GarantiaFicha />} />
             <Route path="/relatorios" element={<RelatorioRankings />} />
+            <Route path="/relatorios/erro-interno" element={<RelatorioErroInterno />} />
+            <Route path="/alertas-reincidencia" element={<AlertasReincidencia />} />
             {/* Fora do MVP / Dashboard antigo: redirect */}
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
-            <Route path="/alertas-reincidencia" element={<Navigate to="/" replace />} />
             <Route path="/regras-prazo" element={<Navigate to="/" replace />} />
             <Route path="/movimentos-globus" element={<Navigate to="/" replace />} />
           </Route>
