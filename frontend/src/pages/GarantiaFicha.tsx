@@ -11,6 +11,7 @@ import {
   canEditGarantia,
   canVincularNf,
 } from "../auth/permissions";
+import AnexoPickerPreview from "../components/AnexoPickerPreview";
 import BadgeStatus from "../components/BadgeStatus";
 import {
   buscarNfGlobus,
@@ -19,6 +20,7 @@ import {
   type GlobusNf,
 } from "../components/GlobusStatusBadge";
 import Timeline, { type Evento } from "../components/Timeline";
+import { Button } from "@/components/ui/button";
 
 type HistoricoGlobusPayload = {
   peca_codigo: string;
@@ -184,7 +186,7 @@ export default function GarantiaFicha() {
   const [cobrancaInterna, setCobrancaInterna] = useState(true);
   const [obsCobranca, setObsCobranca] = useState("");
   const [nfGlobo, setNfGlobo] = useState("");
-  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [anexoFiles, setAnexoFiles] = useState<File[]>([]);
   const [buscandoNf, setBuscandoNf] = useState<"remessa" | "retorno" | "globo" | null>(null);
   const [hitsNfGlobus, setHitsNfGlobus] = useState<GlobusNf[]>([]);
   const [hitsNfTipo, setHitsNfTipo] = useState<"remessa" | "retorno" | "globo" | null>(null);
@@ -563,6 +565,7 @@ export default function GarantiaFicha() {
 
   async function uploadAnexo(e: FormEvent) {
     e.preventDefault();
+    const arquivo = anexoFiles[0];
     if (!g || !arquivo) return;
     setError("");
     setMsg("");
@@ -571,7 +574,7 @@ export default function GarantiaFicha() {
     fd.append("descricao", "Anexo da ficha");
     try {
       await api(`/api/garantias/${g.id}/anexos/`, { method: "POST", formData: fd });
-      setArquivo(null);
+      setAnexoFiles([]);
       setMsg("Anexo enviado.");
       load();
     } catch (err) {
@@ -1492,25 +1495,21 @@ export default function GarantiaFicha() {
             )}
 
             {allowAnexar ? (
-              <form
-                onSubmit={uploadAnexo}
-                className="flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:flex-wrap sm:items-end"
-              >
-                <div className="min-w-0 flex-1">
-                  <label className="mb-1 block text-xs text-muted">Anexar PDF</label>
-                  <input
-                    type="file"
-                    accept=".pdf,image/*"
-                    className="max-w-full text-sm"
-                    onChange={(e) => setArquivo(e.target.files?.[0] || null)}
-                  />
-                </div>
-                <button
+              <form onSubmit={uploadAnexo} className="space-y-3 border-t border-line pt-3">
+                <AnexoPickerPreview
+                  files={anexoFiles}
+                  onChange={setAnexoFiles}
+                  multiple={false}
+                  label="Anexar arquivo"
+                  hint="Confira a prévia. Pode trocar ou remover antes de enviar."
+                />
+                <Button
                   type="submit"
-                  className="w-full rounded-lg border border-line px-3 py-2 text-sm text-cyan sm:w-auto"
+                  disabled={!anexoFiles.length}
+                  className="w-full sm:w-auto"
                 >
                   Enviar anexo
-                </button>
+                </Button>
               </form>
             ) : null}
           </>

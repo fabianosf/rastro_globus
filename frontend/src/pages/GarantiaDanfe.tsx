@@ -12,6 +12,7 @@ import {
   GlobusPeca,
   GlobusVeiculo,
 } from "../components/GlobusStatusBadge";
+import AnexoPickerPreview from "../components/AnexoPickerPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -736,51 +737,13 @@ export default function GarantiaDanfe() {
 
         <section className="space-y-2 border-t border-line pt-4">
           <h3 className="text-sm font-semibold text-cyan">Anexos (comprovante) *</h3>
-          <label className="block text-sm">
-            <input
-              type="file"
-              multiple
-              accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              className="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-cyan/20 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-cyan"
-              onChange={(e) => {
-                const lista = Array.from(e.target.files || []);
-                if (!lista.length) return;
-                setAnexos((prev) => {
-                  const nomes = new Set(prev.map((f) => `${f.name}:${f.size}`));
-                  const novos = lista.filter((f) => !nomes.has(`${f.name}:${f.size}`));
-                  return [...prev, ...novos];
-                });
-                e.target.value = "";
-              }}
-            />
-            <span className="mt-1 block text-xs text-muted">
-              Um ou mais arquivos: foto, PDF ou DOC. Pode selecionar várias vezes.
-            </span>
-          </label>
-          {anexos.length ? (
-            <ul className="space-y-1 rounded-lg border border-line bg-bg/40 px-3 py-2 text-sm">
-              {anexos.map((f, idx) => (
-                <li
-                  key={`${f.name}-${f.size}-${idx}`}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <span className="truncate text-green">
-                    {f.name}
-                    <span className="ml-2 text-xs text-muted">
-                      ({Math.max(1, Math.round(f.size / 1024))} KB)
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs text-red hover:underline"
-                    onClick={() => setAnexos((prev) => prev.filter((_, i) => i !== idx))}
-                  >
-                    Remover
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <AnexoPickerPreview
+            files={anexos}
+            onChange={setAnexos}
+            multiple
+            label="Selecionar arquivo(s)"
+            hint="Foto, PDF ou DOC. Confira a prévia — pode trocar ou remover antes de salvar."
+          />
         </section>
 
         {podeFecharImp ? (
