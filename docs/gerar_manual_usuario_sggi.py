@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gera docs/MANUAL_USUARIO_SGGI.pdf — manual visual passo a passo para o usuário final.
+Gera docs/MANUAL_USUARIO_SGGI.pdf — POP operacional do aplicativo (usuário final).
 Uso: python docs/gerar_manual_usuario_sggi.py
 """
 
@@ -416,7 +416,9 @@ def page_footer(canvas, doc):
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(MUTED)
     canvas.drawCentredString(
-        A4[0] / 2, 1.15 * cm, f"SGGI — Manual do Usuário Final  ·  página {doc.page}"
+        A4[0] / 2,
+        1.15 * cm,
+        f"SGGI — POP do aplicativo (usuário)  ·  v1.1  ·  página {doc.page}",
     )
     canvas.restoreState()
 
@@ -430,29 +432,32 @@ def build():
         rightMargin=1.8 * cm,
         topMargin=1.5 * cm,
         bottomMargin=1.8 * cm,
-        title="SGGI — Manual do Usuário Final",
+        title="SGGI — POP do aplicativo (usuário final)",
         author="SGGI",
     )
     story: list = []
 
     # —— CAPA ——
-    story.append(Spacer(1, 3.2 * cm))
+    story.append(Spacer(1, 2.6 * cm))
     story.append(Paragraph("SGGI", st["cover_title"]))
     story.append(
         Paragraph("Sistema de Gestão de Garantias Improcedentes", st["cover_sub"])
     )
     story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph("Manual do Usuário Final", st["cover_title"]))
+    story.append(Paragraph("POP do aplicativo", st["cover_title"]))
+    story.append(
+        Paragraph("Procedimento operacional — usuário final", st["cover_sub"])
+    )
     story.append(Spacer(1, 6 * mm))
     story.append(
         Paragraph(
             "Guia visual passo a passo — com telas ilustradas —<br/>"
-            "para cadastrar DANFE, acompanhar a ficha, ver histórico Globus,<br/>"
+            "para cadastrar DANFE, conferir foto/anexos na ficha, ver histórico Globus,<br/>"
             "alertas de reincidência e o custo do erro interno.",
             st["cover_sub"],
         )
     )
-    story.append(Spacer(1, 2 * cm))
+    story.append(Spacer(1, 1.2 * cm))
     story.append(
         tip_box(
             "O SGGI não movimenta estoque do Globus. Ele só registra o rastro da garantia "
@@ -461,12 +466,17 @@ def build():
             "tip",
         )
     )
-    story.append(Spacer(1, 1 * cm))
-    story.append(Paragraph("Uso interno · Português (Brasil)", st["caption"]))
+    story.append(Spacer(1, 8 * mm))
+    story.append(
+        Paragraph(
+            "Versão <b>1.1</b> · 14/10/2026 · Uso interno · Português (Brasil)",
+            st["caption"],
+        )
+    )
     story.append(PageBreak())
 
     # —— SUMÁRIO ——
-    story.append(Paragraph("Como usar este manual", st["h1"]))
+    story.append(Paragraph("Como usar este POP", st["h1"]))
     story.append(
         Paragraph(
             "Siga os passos na ordem. Cada etapa mostra uma <b>tela ilustrada</b> parecida "
@@ -482,12 +492,13 @@ def build():
         "4. Fluxo completo em 1 minuto",
         "5. Registrar DANFE (remessa)",
         "6. Minhas NFs — lista e abrir ficha",
-        "7. Ficha — histórico Globus",
-        "8. Avançar status e fechar o caso",
-        "9. Encerrar improcedente em um passo",
-        "10. Alertas de reincidência",
-        "11. Custo do erro interno",
-        "12. Problemas comuns",
+        "7. Ficha — foto / anexos da nota",
+        "8. Ficha — histórico Globus",
+        "9. Avançar status e fechar o caso",
+        "10. Encerrar improcedente em um passo",
+        "11. Alertas de reincidência",
+        "12. Custo do erro interno",
+        "13. Problemas comuns",
     ]:
         story.append(Paragraph(line, st["toc"]))
     story.append(PageBreak())
@@ -630,7 +641,11 @@ def build():
     story.append(Spacer(1, 3))
     story.append(StepBadge(3, "Confira peça, CARRO, fornecedor, valor e NF origem", st))
     story.append(Spacer(1, 3))
-    story.append(StepBadge(4, "Clique em Registrar remessa", st))
+    story.append(
+        StepBadge(4, "Observação (opcional) e anexe a foto/PDF — confira a prévia", st)
+    )
+    story.append(Spacer(1, 3))
+    story.append(StepBadge(5, "Clique em Registrar remessa", st))
     story.append(Spacer(1, 6))
     story.append(
         ScreenFrame(
@@ -642,18 +657,21 @@ def build():
                 "· [ Buscar no Globus ]",
                 "· Peça / CARRO / Fornecedor / Valor",
                 "· NF origem (compra) — outro número!",
+                "· Observação (opcional)",
+                "· Anexo: prévia da foto/PDF antes de enviar",
                 "",
-                ">> Não use o nº da remessa como se fosse NF de compra",
+                ">> Confira a prévia — troque ou remova se estiver errado",
             ],
             buttons=["Buscar no Globus", "Registrar remessa"],
             highlight="Registrar remessa",
-            height=6.4 * cm,
+            height=7.2 * cm,
         )
     )
     story.append(Paragraph("Figura — cadastro da DANFE", st["caption"]))
     story.append(
         tip_box(
-            "Código de peça ou CARRO: digitar e salvar basta — não precisa clicar na sugestão.",
+            "Código de peça ou CARRO: digitar e salvar basta — não precisa clicar na sugestão. "
+            "A prévia do anexo aparece na própria tela de cadastro (antes de gravar).",
             st,
         )
     )
@@ -686,8 +704,68 @@ def build():
     story.append(Paragraph("Figura — lista Minhas NFs", st["caption"]))
     story.append(PageBreak())
 
-    # —— 7 HISTÓRICO ——
-    story.append(Paragraph("7. Ficha — Histórico Globus", st["h1"]))
+    # —— 7 ANEXOS NA FICHA ——
+    story.append(Paragraph("7. Ficha — foto / anexos da nota", st["h1"]))
+    story.append(
+        Paragraph(
+            "Ao abrir a ficha, logo após o banner <b>O que fazer agora</b>, confira o bloco "
+            "<b>Foto / anexos da nota</b>. A foto fica visível no topo — não precisa rolar "
+            "até o fim da página.",
+            st["body"],
+        )
+    )
+    story.append(StepBadge(1, "Veja a prévia (imagem ou PDF) no topo da ficha", st))
+    story.append(Spacer(1, 3))
+    story.append(
+        StepBadge(2, "Use Abrir, Trocar ou Excluir (perfil com permissão de anexar)", st)
+    )
+    story.append(Spacer(1, 3))
+    story.append(
+        StepBadge(3, "Se aparecer “Nenhuma foto anexada”, envie pelo picker com prévia", st)
+    )
+    story.append(Spacer(1, 6))
+    story.append(
+        ScreenFrame(
+            "Ficha da NF",
+            "Minhas NFs",
+            [
+                "## O que fazer agora",
+                "· Próximo passo sugerido…",
+                "",
+                "## Foto / anexos da nota",
+                "· [ prévia da imagem / PDF ]",
+                "· Abrir  ·  Trocar  ·  Excluir",
+                "",
+                "!! Sem anexo → aviso amarelo + campo para enviar",
+            ],
+            buttons=["Abrir", "Trocar", "Excluir", "Enviar anexo"],
+            highlight="Trocar",
+            height=7.0 * cm,
+        )
+    )
+    story.append(Paragraph("Figura — bloco Foto / anexos no topo da ficha", st["caption"]))
+    story.append(
+        bullets(
+            [
+                "<b>Abrir</b> — abre o arquivo em nova aba.",
+                "<b>Trocar</b> — escolhe um novo arquivo; o sistema remove o antigo e grava o novo.",
+                "<b>Excluir</b> — pede confirmação e apaga o anexo (e o arquivo).",
+                "Anexos DOC/outros: cartão com nome + Abrir (sem prévia fiel).",
+            ],
+            st,
+        )
+    )
+    story.append(
+        tip_box(
+            "Quem não tem permissão de anexar só visualiza/abre. Em Ações, há um lembrete "
+            "apontando para esta seção no topo.",
+            st,
+        )
+    )
+    story.append(PageBreak())
+
+    # —— 8 HISTÓRICO ——
+    story.append(Paragraph("8. Ficha — Histórico Globus", st["h1"]))
     story.append(
         Paragraph(
             "Na ficha, <b>antes</b> de fechar o caso, role até o bloco "
@@ -720,8 +798,8 @@ def build():
     ], st))
     story.append(PageBreak())
 
-    # —— 8 FECHAR ——
-    story.append(Paragraph("8. Avançar status e fechar o caso", st["h1"]))
+    # —— 9 FECHAR ——
+    story.append(Paragraph("9. Avançar status e fechar o caso", st["h1"]))
     story.append(Paragraph("Compras / manutenção — seção Ações", st["h2"]))
     story.append(bullets([
         "Com NF remessa: <b>Marcar como enviada</b>",
@@ -763,8 +841,8 @@ def build():
     )
     story.append(PageBreak())
 
-    # —— 9 DIRETO ——
-    story.append(Paragraph("9. Encerrar improcedente em um passo", st["h1"]))
+    # —— 10 DIRETO ——
+    story.append(Paragraph("10. Encerrar improcedente em um passo", st["h1"]))
     story.append(
         Paragraph(
             "Quando o fornecedor <b>já respondeu</b> e o status ainda é <b>aberta</b> ou "
@@ -799,8 +877,8 @@ def build():
     )
     story.append(PageBreak())
 
-    # —— 10 ALERTAS ——
-    story.append(Paragraph("10. Alertas de reincidência", st["h1"]))
+    # —— 11 ALERTAS ——
+    story.append(Paragraph("11. Alertas de reincidência", st["h1"]))
     story.append(
         Paragraph(
             "Mesma peça aplicada de novo no <b>mesmo veículo</b> dentro do prazo. "
@@ -828,8 +906,8 @@ def build():
     story.append(Paragraph("Figura — tela de alertas", st["caption"]))
     story.append(PageBreak())
 
-    # —— 11 ERRO INTERNO ——
-    story.append(Paragraph("11. Custo do erro interno", st["h1"]))
+    # —— 12 ERRO INTERNO ——
+    story.append(Paragraph("12. Custo do erro interno", st["h1"]))
     story.append(
         Paragraph(
             "Menu → <b>Relatórios</b> (aba Custo do erro interno). Soma as garantias "
@@ -863,8 +941,8 @@ def build():
     )
     story.append(PageBreak())
 
-    # —— 12 FAQ ——
-    story.append(Paragraph("12. Problemas comuns", st["h1"]))
+    # —— 13 FAQ ——
+    story.append(Paragraph("13. Problemas comuns", st["h1"]))
     story.append(
         simple_table(
             ["Situação", "O que fazer"],
@@ -884,6 +962,14 @@ def build():
                 [
                     "Pede laudo",
                     "Preencha o resumo ou anexe o PDF na seção Ações.",
+                ],
+                [
+                    "Não vejo a foto na ficha",
+                    "Olhe o bloco Foto / anexos no topo (após O que fazer agora). Use Abrir se a prévia falhar.",
+                ],
+                [
+                    "Nenhuma foto anexada",
+                    "Envie pelo picker no mesmo bloco (com prévia) ou no cadastro da remessa.",
                 ],
                 [
                     "Globus não acha a NF",
@@ -907,10 +993,11 @@ def build():
     story.append(bullets([
         "Globus = estoque. SGGI = rastro da garantia.",
         "Improcedente nunca grava estoque / NF de entrada Globo.",
+        "Confira a foto/anexo no topo da ficha antes de avançar o status.",
         "Use o Histórico Globus na ficha para apoiar a decisão — o laudo é humano.",
     ], st))
     story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph("— Fim do manual. Bom trabalho! —", st["caption"]))
+    story.append(Paragraph("— Fim do POP do aplicativo. Bom trabalho! —", st["caption"]))
 
     doc.build(story, onFirstPage=page_footer, onLaterPages=page_footer)
     print(f"OK: {OUT}")

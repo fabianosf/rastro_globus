@@ -349,7 +349,6 @@ Documentos especializados (não duplicados aqui):
 | [SOLICITACAO_INFRA_LDAP_SGGI.md](SOLICITACAO_INFRA_LDAP_SGGI.md) | Pedido à infra (LDAPS) |
 | [ops/programa-cutover-improcedentes.md](ops/programa-cutover-improcedentes.md) | Cutover improcedentes |
 | [ops/operacao-diaria-novos-rg.md](ops/operacao-diaria-novos-rg.md) | Operação diária |
-| [ops/status-100-pct.md](ops/status-100-pct.md) | Status go-live |
 | [ops/incoming/README.md](ops/incoming/README.md) | Entrada de planilhas |
 | [MANUAL_USUARIO_SGGI.pdf](MANUAL_USUARIO_SGGI.pdf) | Manual do usuário (PDF) |
 | [../certs/README.md](../certs/README.md) | CA para LDAPS |
