@@ -1,7 +1,6 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import AppLayout from "./layouts/AppLayout";
-import AlertasReincidencia from "./pages/AlertasReincidencia";
 import GarantiaDanfe from "./pages/GarantiaDanfe";
 import GarantiaFicha from "./pages/GarantiaFicha";
 import GarantiaNova from "./pages/GarantiaNova";
@@ -19,11 +18,10 @@ function Protected() {
 }
 
 function titleFor(pathname: string) {
-  if (pathname === "/" || pathname === "/garantias") return "Minhas NFs";
-  if (pathname.startsWith("/garantias/nova-danfe")) return "Nova remessa";
-  if (pathname.startsWith("/garantias/nova")) return "Formulário completo";
-  if (pathname.match(/^\/garantias\/\d+/)) return "Ficha da NF";
-  if (pathname.startsWith("/alertas-reincidencia")) return "Reincidências";
+  if (pathname === "/" || pathname === "/garantias") return "Notas";
+  if (pathname.startsWith("/garantias/nova-danfe")) return "Cadastrar nota";
+  if (pathname.startsWith("/garantias/nova")) return "Cadastro avançado";
+  if (pathname.match(/^\/garantias\/\d+/)) return "Detalhe da nota";
   if (pathname.startsWith("/relatorios")) return "Relatórios";
   return "SGGI";
 }
@@ -48,9 +46,9 @@ export default function App() {
             <Route path="/relatorios" element={<Relatorios />} />
             <Route
               path="/relatorios/erro-interno"
-              element={<Navigate to="/relatorios?aba=erro-interno" replace />}
+              element={<Navigate to="/relatorios" replace />}
             />
-            <Route path="/alertas-reincidencia" element={<AlertasReincidencia />} />
+            <Route path="/alertas-reincidencia" element={<Navigate to="/relatorios" replace />} />
             {/* Fora do MVP / Dashboard antigo: redirect */}
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/regras-prazo" element={<Navigate to="/" replace />} />

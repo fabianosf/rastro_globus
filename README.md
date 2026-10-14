@@ -1,5 +1,7 @@
 # SGGI — Sistema de Gestão de Garantias Improcedentes
 
+Documentação completa → [`docs/DOCUMENTACAO_SGGI.md`](docs/DOCUMENTACAO_SGGI.md)
+
 Rastreia o ciclo de garantia de peças da frota **sem movimentar estoque**.
 
 > O Globo controla estoque. O SGGI controla o rastro da garantia.

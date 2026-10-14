@@ -127,33 +127,24 @@ function textoProximoPasso(
   opts: { allowAdvance: boolean; allowClose: boolean; perfil?: string | null }
 ): string {
   if (STATUS_FECHADO.has(status)) {
-    return "Caso encerrado. Consulte a timeline e os anexos abaixo.";
+    return "Nota encerrada. Veja os dados e a foto anexada abaixo.";
   }
-  if (status === "aberta") {
-    if (opts.allowAdvance) {
-      return "Próximo passo: confirme a NF de remessa e marque como enviada.";
-    }
-    return "Aguardando Compras marcar como enviada (com NF de remessa).";
-  }
-  if (status === "enviada") {
+  if (status === "aberta" || status === "enviada") {
     if (opts.allowClose) {
-      return "Próximo passo: marcar em análise, ou fechar improcedente agora se o fornecedor já respondeu.";
+      return "Pode encerrar como improcedente agora, se já souber o resultado.";
     }
-    if (opts.allowAdvance) {
-      return "Próximo passo: marcar em análise. Depois a manutenção fecha o caso.";
-    }
-    return "Aguardando avançar para em análise.";
+    return "Nota em andamento. A manutenção encerra quando souber o resultado.";
   }
   if (status === "em_analise") {
     if (opts.allowClose) {
-      return "Próximo passo: fechar como procedente, improcedente ou cortesia.";
+      return "Encerre a nota: improcedente, procedente ou cortesia.";
     }
-    return "Aguardando manutenção (ou admin) fechar o caso.";
+    return "Aguardando a manutenção encerrar a nota.";
   }
   if (opts.perfil === "direcao") {
-    return "Seu perfil é somente leitura nas decisões.";
+    return "Seu acesso é só para consulta.";
   }
-  return "Acompanhe o fluxo da garantia.";
+  return "Acompanhe a situação da nota.";
 }
 
 export default function GarantiaFicha() {
@@ -702,11 +693,13 @@ export default function GarantiaFicha() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link to="/" className="text-xs text-cyan hover:underline">
-            ← Minhas NFs
+            ← Voltar às notas
           </Link>
-          <h2 className="text-xl font-semibold">{g.protocolo}</h2>
+          <h2 className="text-xl font-semibold">
+            Nota {g.nf_remessa || g.protocolo}
+          </h2>
           <p className="text-sm text-muted">
-            {g.peca_nome} · CARRO {g.veiculo_codigo} · {g.fornecedor_nome}
+            {g.peca_nome} · Carro {g.veiculo_codigo} · {g.fornecedor_nome}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -726,7 +719,6 @@ export default function GarantiaFicha() {
 
       <div className="rounded-xl border border-cyan/30 bg-cyan/5 px-4 py-3">
         <p className="text-sm font-medium text-ink">{proximoPasso}</p>
-        <p className="mt-1 text-xs text-muted">Não altera estoque Globus.</p>
       </div>
 
       {error ? <p className="text-sm text-red">{error}</p> : null}
@@ -992,9 +984,9 @@ export default function GarantiaFicha() {
       >
         <summary className="cursor-pointer list-none font-semibold marker:content-none [&::-webkit-details-marker]:hidden">
           <span className="text-cyan">▸ </span>
-          Consultar histórico no Globus (opcional)
+          Opções avançadas (histórico sistema)
           <span className="mt-1 block text-xs font-normal text-muted">
-            Só leitura — saídas, compras e reincidência desta peça/CARRO.
+            Só se precisar consultar o sistema de estoque. Pode ignorar no dia a dia.
           </span>
         </summary>
         <div className="mt-3 space-y-3 border-t border-line pt-3">
@@ -1174,7 +1166,7 @@ export default function GarantiaFicha() {
         className="space-y-3 rounded-xl border border-line bg-panel p-4 scroll-mt-4"
       >
         <div>
-          <h3 className="font-semibold">Ações</h3>
+          <h3 className="font-semibold">O que fazer agora</h3>
           <p className="text-xs text-muted">Só o que dá para fazer agora — não altera estoque Globus.</p>
         </div>
 
@@ -1528,11 +1520,11 @@ export default function GarantiaFicha() {
 
       <details className="rounded-xl border border-line bg-panel p-4 text-sm">
         <summary className="cursor-pointer font-semibold text-muted hover:text-ink">
-          NFs garantia Globus (NEG/NFG) — opcional
+          Busca avançada no sistema de estoque (opcional)
         </summary>
         <div className="mt-3 space-y-3 border-t border-line pt-3">
           <p className="text-xs text-muted">
-            Espelho Globus. Improcedente fecha na seção Ações (só em análise / manutenção).
+            Consulta opcional. No dia a dia use só os dados e a foto da nota.
           </p>
           <div className="flex flex-wrap gap-2">
             <input

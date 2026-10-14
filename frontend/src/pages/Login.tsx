@@ -1,13 +1,17 @@
 import { FormEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function Login() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -19,9 +23,12 @@ export default function Login() {
     setLoading(true);
     try {
       await login(username, password);
+      toast.success("Login realizado");
       navigate("/");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Falha no login.");
+      const msg = err instanceof ApiError ? err.message : "Falha no login.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -31,10 +38,10 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-bg px-4">
       <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-8 shadow-xl">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-cyan text-sm font-bold text-bg">
+          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
             SGGI
           </div>
-          <h1 className="text-2xl font-bold text-text">SGGI</h1>
+          <h1 className="text-2xl font-bold text-foreground">SGGI</h1>
           <p className="mt-2 text-sm text-muted">
             Sistema de Gestão de Garantias Improcedentes
           </p>
@@ -42,9 +49,9 @@ export default function Login() {
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm text-muted">Usuário</label>
-            <input
-              className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-text outline-none focus:border-cyan"
+            <Label htmlFor="login-user">Usuário</Label>
+            <Input
+              id="login-user"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
@@ -52,24 +59,20 @@ export default function Login() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-muted">Senha</label>
-            <input
+            <Label htmlFor="login-pass">Senha</Label>
+            <Input
+              id="login-pass"
               type="password"
-              className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-text outline-none focus:border-cyan"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
             />
           </div>
-          {error ? <p className="text-sm text-red">{error}</p> : null}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-cyan py-2.5 font-semibold text-bg hover:opacity-90 disabled:opacity-60"
-          >
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <Button type="submit" disabled={loading} className="w-full" size="lg">
             {loading ? "Entrando..." : "Entrar"}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

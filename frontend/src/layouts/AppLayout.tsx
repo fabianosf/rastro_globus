@@ -1,104 +1,106 @@
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { api } from "../api/client";
+import { useState } from "react";
+import { MenuIcon } from "lucide-react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { canCreateGarantia } from "../auth/permissions";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 export default function AppLayout({ title }: { title?: string }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const canNova = canCreateGarantia(user?.perfil);
-  const [alertasNovos, setAlertasNovos] = useState(0);
-
-  useEffect(() => {
-    api<{ count: number }>("/api/alertas-reincidencia/novos-count/")
-      .then((r) => setAlertasNovos(r.count || 0))
-      .catch(() => setAlertasNovos(0));
-  }, [location.pathname]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-3 py-2 text-sm transition ${
       isActive ? "bg-cyan/15 text-cyan" : "text-muted hover:bg-line/40 hover:text-text"
     }`;
 
-  const relatoriosActive =
-    location.pathname.startsWith("/relatorios");
+  function NavItems({ onNavigate }: { onNavigate?: () => void }) {
+    return (
+      <>
+        <NavLink to="/" end className={navClass} onClick={onNavigate}>
+          Notas
+        </NavLink>
+        {canNova ? (
+          <NavLink to="/garantias/nova-danfe" className={navClass} onClick={onNavigate}>
+            Cadastrar
+          </NavLink>
+        ) : null}
+        <NavLink to="/relatorios" className={navClass} onClick={onNavigate}>
+          Relatórios
+        </NavLink>
+      </>
+    );
+  }
+
+  function doLogout() {
+    logout();
+    navigate("/login");
+  }
 
   return (
     <div className="flex min-h-screen bg-bg">
-      <aside className="no-print flex w-60 shrink-0 flex-col border-r border-line bg-panel">
+      <aside className="no-print hidden w-56 shrink-0 flex-col border-r border-line bg-panel md:flex">
         <div className="flex items-center gap-3 border-b border-line px-4 py-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan text-[10px] font-bold text-bg">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-[10px] font-bold text-primary-foreground">
             SGGI
           </div>
           <div>
             <p className="font-semibold text-text">SGGI</p>
-            <p className="text-xs text-muted">Garantias Improcedentes</p>
+            <p className="text-xs text-muted">Notas e custos</p>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-3">
-          <NavLink to="/" end className={navClass}>
-            Minhas NFs
-          </NavLink>
-          {canNova ? (
-            <NavLink to="/garantias/nova-danfe" className={navClass}>
-              Nova remessa
-            </NavLink>
-          ) : null}
-          <NavLink to="/alertas-reincidencia" className={navClass}>
-            <span className="flex items-center justify-between gap-2">
-              <span>Reincidências</span>
-              {alertasNovos > 0 ? (
-                <span className="rounded-md bg-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber">
-                  {alertasNovos}
-                </span>
-              ) : null}
-            </span>
-          </NavLink>
-          <NavLink
-            to="/relatorios?aba=erro-interno"
-            className={() =>
-              `rounded-lg px-3 py-2 text-sm transition ${
-                relatoriosActive
-                  ? "bg-cyan/15 text-cyan"
-                  : "text-muted hover:bg-line/40 hover:text-text"
-              }`
-            }
-          >
-            Relatórios
-          </NavLink>
+          <NavItems />
         </nav>
         <div className="border-t border-line p-4 text-xs text-muted">
-          Cadastre a remessa e acompanhe até o fechamento.
-          <br />
-          Não altera estoque Globus.
+          Cadastre a nota com foto e acompanhe quantidade e valor.
         </div>
       </aside>
 
+      <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+        <SheetContent side="left" className="bg-panel p-0 md:hidden">
+          <SheetHeader className="border-b border-line">
+            <SheetTitle>SGGI</SheetTitle>
+          </SheetHeader>
+          <nav className="flex flex-col gap-1 p-3">
+            <NavItems onNavigate={() => setMenuOpen(false)} />
+          </nav>
+        </SheetContent>
+      </Sheet>
+
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="no-print flex items-center justify-between border-b border-line bg-panel/80 px-6 py-4">
-          <h1 className="text-lg font-semibold text-text">{title || "SGGI"}</h1>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-muted">
-              {user?.first_name || user?.username}
-              <span className="ml-2 rounded border border-line px-2 py-0.5 text-xs">
-                {user?.perfil}
-              </span>
-            </span>
-            <button
+        <header className="no-print flex items-center justify-between border-b border-line bg-panel/80 px-4 py-3 md:px-6 md:py-4">
+          <div className="flex items-center gap-2">
+            <Button
               type="button"
-              className="rounded-lg border border-line px-3 py-1.5 text-muted hover:text-text"
-              onClick={() => {
-                logout();
-                navigate("/login");
-              }}
+              variant="outline"
+              size="icon-sm"
+              className="md:hidden"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Abrir menu"
             >
+              <MenuIcon />
+            </Button>
+            <h1 className="text-lg font-semibold text-text">{title || "SGGI"}</h1>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="hidden text-muted sm:inline">
+              {user?.first_name || user?.username}
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={doLogout}>
               Sair
-            </button>
+            </Button>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-4 md:p-6">
           <Outlet />
         </main>
       </div>

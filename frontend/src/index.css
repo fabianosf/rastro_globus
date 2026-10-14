@@ -2,17 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+/* SGGI brand tokens (legacy class names: bg-bg, text-muted, border-line…) */
 :root {
   --bg: #07111d;
   --panel: #0f2136;
   --line: #1c3a58;
   --text: #e8f1fb;
-  --muted: #8aa4bd;
+  --muted-text: #8aa4bd;
   --cyan: #22d3ee;
   --green: #34d399;
   --amber: #fbbf24;
   --red: #f87171;
   --violet: #a78bfa;
+
+  /* shadcn tokens mapped to SGGI dark */
+  --background: #07111d;
+  --foreground: #e8f1fb;
+  --card: #0f2136;
+  --card-foreground: #e8f1fb;
+  --popover: #0f2136;
+  --popover-foreground: #e8f1fb;
+  --primary: #22d3ee;
+  --primary-foreground: #07111d;
+  --secondary: #1c3a58;
+  --secondary-foreground: #e8f1fb;
+  --muted: #12283f;
+  --muted-foreground: #8aa4bd;
+  --accent: #1c3a58;
+  --accent-foreground: #e8f1fb;
+  --destructive: #f87171;
+  --border: #1c3a58;
+  --input: #1c3a58;
+  --ring: #22d3ee;
+  --radius: 0.5rem;
+  --sidebar: #0f2136;
+  --sidebar-foreground: #e8f1fb;
+  --sidebar-primary: #22d3ee;
+  --sidebar-primary-foreground: #07111d;
+  --sidebar-accent: #1c3a58;
+  --sidebar-accent-foreground: #e8f1fb;
+  --sidebar-border: #1c3a58;
+  --sidebar-ring: #22d3ee;
 }
 
 html,
@@ -23,8 +53,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--background);
+  color: var(--foreground);
   font-family: Inter, system-ui, sans-serif;
 }
 
@@ -84,5 +114,11 @@ button {
   #relatorio-print .h-72,
   #relatorio-print .h-80 {
     break-inside: avoid;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
   }
 }

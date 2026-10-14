@@ -1,8 +1,9 @@
-"""Extração de campos de DANFE (foto) via OpenAI Vision — sem persistir a imagem."""
+"""Extração de campos de DANFE (foto) via Vision API — sem persistir a imagem."""
 
 from __future__ import annotations
 
 import base64
+import io
 import json
 import re
 from typing import Any
@@ -16,6 +17,7 @@ ALLOWED_CONTENT_TYPES = {
     "image/webp": "webp",
 }
 MAX_BYTES = 8 * 1024 * 1024
+MAX_SIDE_PX = 1600
 
 EXTRACT_PROMPT = """Você lê uma foto de DANFE (Nota Fiscal Eletrônica) brasileira de remessa em garantia.
 Extraia os campos abaixo. Responda APENAS um JSON válido (sem markdown) com estas chaves:
@@ -99,6 +101,43 @@ def _clean_payload(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _resize_image(raw: bytes, mime: str) -> tuple[bytes, str]:
+    """Redimensiona lado máximo ~1600px (Pillow). Se falhar, devolve original."""
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return raw, mime
+
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img = ImageOps.exif_transpose(img)
+        w, h = img.size
+        if max(w, h) > MAX_SIDE_PX:
+            img.thumbnail((MAX_SIDE_PX, MAX_SIDE_PX), Image.Resampling.LANCZOS)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=85, optimize=True)
+        return out.getvalue(), "image/jpeg"
+    except Exception:
+        return raw, mime
+
+
+def _extract_json_text(text: str) -> str:
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    text = text.strip()
+    if text.startswith("{") and text.endswith("}"):
+        return text
+    # fallback: primeiro objeto JSON no texto
+    m = re.search(r"\{[\s\S]*\}", text)
+    if m:
+        return m.group(0)
+    return text
+
+
 def extrair_danfe_da_imagem(file_obj, content_type: str | None = None) -> dict[str, Any]:
     api_key = (getattr(settings, "OPENAI_API_KEY", None) or "").strip()
     if not api_key:
@@ -109,7 +148,6 @@ def extrair_danfe_da_imagem(file_obj, content_type: str | None = None) -> dict[s
 
     ctype = (content_type or getattr(file_obj, "content_type", "") or "").lower().split(";")[0].strip()
     if ctype not in ALLOWED_CONTENT_TYPES:
-        # fallback by name
         name = (getattr(file_obj, "name", "") or "").lower()
         if name.endswith((".jpg", ".jpeg")):
             ctype = "image/jpeg"
@@ -132,6 +170,7 @@ def extrair_danfe_da_imagem(file_obj, content_type: str | None = None) -> dict[s
         raise DanfeOcrError("Imagem maior que 8 MB. Reduza a foto e tente de novo.")
 
     mime = ctype if ctype in ALLOWED_CONTENT_TYPES else "image/jpeg"
+    raw, mime = _resize_image(raw, mime)
     b64 = base64.b64encode(raw).decode("ascii")
     model = (getattr(settings, "OPENAI_VISION_MODEL", None) or "gpt-4o-mini").strip()
 
@@ -143,37 +182,47 @@ def extrair_danfe_da_imagem(file_obj, content_type: str | None = None) -> dict[s
             status=503,
         ) from exc
 
-    client = OpenAI(api_key=api_key)
-    try:
-        completion = client.chat.completions.create(
-            model=model,
-            response_format={"type": "json_object"},
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": EXTRACT_PROMPT},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mime};base64,{b64}"},
-                        },
-                    ],
-                }
-            ],
-            temperature=0,
-            max_tokens=1200,
-        )
-    except Exception as exc:
-        raise DanfeOcrError(f"Falha na leitura da DANFE: {exc}", status=502) from exc
+    base_url = (getattr(settings, "OPENAI_BASE_URL", None) or "").strip() or None
+    is_deepseek = bool(base_url and "deepseek" in base_url.lower())
+    client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
 
-    text = (completion.choices[0].message.content or "").strip()
+    create_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": EXTRACT_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                    },
+                ],
+            }
+        ],
+        "temperature": 0,
+        "max_tokens": 2000,
+    }
+    # DeepSeek + vision: response_format json_object tende a esvaziar campos
+    if not is_deepseek:
+        create_kwargs["response_format"] = {"type": "json_object"}
+
+    try:
+        completion = client.chat.completions.create(**create_kwargs)
+    except Exception as exc:
+        msg = str(exc).strip() or exc.__class__.__name__
+        if "connection" in msg.lower() or "connect" in msg.lower():
+            alvo = base_url or "https://api.openai.com/v1"
+            raise DanfeOcrError(
+                f"Falha na leitura da DANFE: sem conexão com {alvo}. "
+                "Confira OPENAI_BASE_URL, rede/firewall e a chave do provedor.",
+                status=502,
+            ) from exc
+        raise DanfeOcrError(f"Falha na leitura da DANFE: {msg}", status=502) from exc
+
+    text = _extract_json_text(completion.choices[0].message.content or "")
     if not text:
         raise DanfeOcrError("Modelo não retornou dados da DANFE.", status=502)
-
-    # Remove fences if model ignores json_object sometimes
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
 
     try:
         parsed = json.loads(text)
@@ -183,4 +232,16 @@ def extrair_danfe_da_imagem(file_obj, content_type: str | None = None) -> dict[s
     if not isinstance(parsed, dict):
         raise DanfeOcrError("Resposta do OCR inválida.", status=502)
 
-    return _clean_payload(parsed)
+    cleaned = _clean_payload(parsed)
+    principais = (
+        cleaned.get("nf_remessa_numero"),
+        cleaned.get("peca_codigo") or cleaned.get("peca_descricao"),
+        cleaned.get("veiculo_codigo"),
+    )
+    if not any(principais):
+        raise DanfeOcrError(
+            "Não foi possível ler NF, peça ou CARRO na foto. "
+            "Tire outra foto mais nítida e bem iluminada (JPEG/PNG).",
+            status=422,
+        )
+    return cleaned

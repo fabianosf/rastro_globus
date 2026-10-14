@@ -411,7 +411,7 @@ class GarantiaViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_permissions(self):
-        if self.action in ("create", "extrair_danfe"):
+        if self.action in ("create", "extrair_danfe", "consultar_chave_nfe"):
             return [IsAuthenticated(), CanCreateGarantia()]
         if self.action in ("partial_update", "update", "destroy"):
             return [IsAuthenticated(), CanEditGarantia()]
@@ -634,6 +634,40 @@ class GarantiaViewSet(viewsets.ModelViewSet):
         except DanfeOcrError as exc:
             return Response({"detail": exc.message}, status=exc.status)
         return Response(dados)
+
+    @action(detail=False, methods=["post"], url_path="consultar-chave-nfe")
+    def consultar_chave_nfe(self, request):
+        """Decodifica chave NFe (44) e tenta complementar via Globus NEG/NFG — não grava."""
+        from .chave_nfe import ChaveNfeError, decodificar_chave_nfe
+        from .globus_oracle import GlobusOracleError
+        from .globus_queries import buscar_nfs_garantia
+
+        chave_raw = request.data.get("chave") or request.data.get("chave_nfe") or ""
+        try:
+            decoded = decodificar_chave_nfe(str(chave_raw))
+        except ChaveNfeError as exc:
+            return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
+
+        globus_payload: dict = {
+            "count": 0,
+            "results": [],
+            "ok": False,
+            "detail": "",
+        }
+        try:
+            rows = buscar_nfs_garantia(numero=decoded["nf_remessa_numero"], limite=20)
+            globus_payload = {
+                "count": len(rows),
+                "results": rows,
+                "ok": True,
+                "detail": "",
+            }
+        except GlobusOracleError as exc:
+            globus_payload["detail"] = str(exc)
+        except Exception as exc:
+            globus_payload["detail"] = f"Globus indisponível: {exc}"
+
+        return Response({**decoded, "globus": globus_payload})
 
     @action(detail=True, methods=["post"])
     def status(self, request, pk=None):

@@ -132,8 +132,10 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
-# OCR DANFE (OpenAI Vision) — foto → campos; persistência só após revisão no formulário
+# OCR DANFE (Vision) — foto → campos; persistência só após revisão no formulário
+# Compatível com OpenAI e Groq (OPENAI_BASE_URL=https://api.groq.com/openai/v1)
 OPENAI_API_KEY = (os.environ.get("OPENAI_API_KEY") or "").strip()
+OPENAI_BASE_URL = (os.environ.get("OPENAI_BASE_URL") or "").strip()
 OPENAI_VISION_MODEL = (os.environ.get("OPENAI_VISION_MODEL") or "gpt-4o-mini").strip()
 
 # --- Samba / AD LDAPS (auth-only; não altera o diretório) ---

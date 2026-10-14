@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { canCreateGarantia } from "../auth/permissions";
+import { canCloseStatus, canCreateGarantia } from "../auth/permissions";
 import {
   buscarPecasGlobus,
   buscarPecasLocal,
@@ -11,8 +12,14 @@ import {
   GlobusPeca,
   GlobusVeiculo,
 } from "../components/GlobusStatusBadge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type Option = { id: number; label: string };
+
+const DEFEITO_ATALHOS = ["Peça ruim", "Peça falha"] as const;
 
 function useDebounced(value: string, ms: number) {
   const [v, setV] = useState(value);
@@ -34,9 +41,6 @@ function labelVeiculo(v: GlobusVeiculo) {
   return v.placa ? `${base} · ${v.placa}` : base;
 }
 
-const field =
-  "w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-cyan";
-
 function toDateInput(value?: string) {
   if (!value) return "";
   const s = String(value).trim();
@@ -48,7 +52,6 @@ function toDateInput(value?: string) {
   return "";
 }
 
-/** Máscara DD/MM/AAAA enquanto digita (só números). */
 function maskDateBr(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 8);
   if (digits.length <= 2) return digits;
@@ -56,14 +59,12 @@ function maskDateBr(value: string) {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
-/** Código interno local: até 40 chars (modelo Peca). */
 function codigoPecaLocal(texto: string) {
   const t = texto.trim().replace(/\s+/g, " ");
   if (t.length <= 40) return t;
   return t.slice(0, 40);
 }
 
-/** Digitação livre de valor: só dígitos e um separador decimal. */
 function maskValorInput(raw: string) {
   const normalized = raw.replace(/\./g, ",").replace(/[^\d,]/g, "");
   const comma = normalized.indexOf(",");
@@ -73,7 +74,6 @@ function maskValorInput(raw: string) {
   return `${intPart},${decPart}`;
 }
 
-/** Completa zeros: 500 → 500,00; 5,5 → 5,50. */
 function formatValorBr(raw: string) {
   const t = raw.trim();
   if (!t) return "";
@@ -82,17 +82,27 @@ function formatValorBr(raw: string) {
   return n.toFixed(2).replace(".", ",");
 }
 
-/** "500,00" → "500.00" para a API. */
 function valorToApi(br: string) {
   const formatted = formatValorBr(br);
   if (!formatted) return null;
   return formatted.replace(",", ".");
 }
 
+function nomeUsuario(user: {
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+} | null) {
+  if (!user) return "";
+  const full = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+  return full || user.username || "";
+}
+
 export default function GarantiaDanfe() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const allowed = canCreateGarantia(user?.perfil);
+  const podeFecharImp = canCloseStatus(user?.perfil);
 
   const [fornecedores, setFornecedores] = useState<Option[]>([]);
   const [veiculo, setVeiculo] = useState("");
@@ -109,12 +119,13 @@ export default function GarantiaDanfe() {
   const [nfRemessa, setNfRemessa] = useState("");
   const [nfSerie, setNfSerie] = useState("1");
   const [nfRemessaData, setNfRemessaData] = useState("");
-  const [chaveNfe, setChaveNfe] = useState("");
   const [nfOrigem, setNfOrigem] = useState("");
   const [nfOrigemData, setNfOrigemData] = useState("");
   const [valor, setValor] = useState("");
   const [defeito, setDefeito] = useState("");
-  const [fotoDanfe, setFotoDanfe] = useState<File | null>(null);
+  const [observacao, setObservacao] = useState("");
+  const [anexos, setAnexos] = useState<File[]>([]);
+  const [comoImprocedente, setComoImprocedente] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -261,7 +272,6 @@ export default function GarantiaDanfe() {
     return String(forn.id);
   }
 
-  /** Grava o texto digitado; usa Globus só se código/descrição forem exatamente iguais. */
   async function resolvePecaId(): Promise<string> {
     if (peca) return peca;
     const texto = qPeca.trim();
@@ -284,10 +294,7 @@ export default function GarantiaDanfe() {
       "/api/pecas/ensure/",
       {
         method: "POST",
-        body: {
-          codigo_interno: codigoInterno,
-          descricao,
-        },
+        body: { codigo_interno: codigoInterno, descricao },
       }
     );
     setPeca(String(local.id));
@@ -296,7 +303,6 @@ export default function GarantiaDanfe() {
     return String(local.id);
   }
 
-  /** CARRO digitado na DANFE — não troca por outro da lista. */
   async function resolveVeiculoId(): Promise<string> {
     if (veiculo) return veiculo;
     const codigo = qVeiculo.trim();
@@ -315,19 +321,16 @@ export default function GarantiaDanfe() {
         codigoVeiculoStr(v).toLowerCase() === lower ||
         String(v.prefixo || "").toLowerCase() === lower
     );
-    const cod = codigo;
     const local = await api<{ id: number; codigo: string }>("/api/veiculos/ensure/", {
       method: "POST",
       body: {
-        codigo: cod,
+        codigo,
         placa: match?.placa || "",
-        descricao: match?.descricao || match?.prefixo || `Veiculo ${cod}`,
+        descricao: match?.descricao || match?.prefixo || `Veiculo ${codigo}`,
       },
     });
     setVeiculo(String(local.id));
-    setVeiculoLabel(
-      labelVeiculo({ ...(match || { codigo: cod }), codigo: local.codigo })
-    );
+    setVeiculoLabel(labelVeiculo({ ...(match || { codigo }), codigo: local.codigo }));
     setHitsVeiculo([]);
     return String(local.id);
   }
@@ -341,32 +344,37 @@ export default function GarantiaDanfe() {
     setError("");
     setMsg("");
     if (!nfRemessa.trim()) {
-      setError("Informe o número da NF remessa.");
+      setError("Informe o número da NF.");
       return;
     }
     const dataRemessaIso = toDateInput(nfRemessaData);
     if (!dataRemessaIso) {
-      setError("Informe a data de emissão da DANFE (ex.: 16/07/2026).");
+      setError("Informe a data de emissão (ex.: 16/07/2026).");
       return;
     }
     if (!nfOrigem.trim()) {
-      setError("Informe a NF de origem citada nas informações complementares (ex.: 39511).");
+      setError("Informe a NF de origem (ex.: 39511).");
       return;
     }
     if (!peca && !qPeca.trim()) {
-      setError("Informe o código ou o nome do produto da DANFE.");
+      setError("Informe o código ou o nome da peça.");
       return;
     }
     if (!veiculo && !qVeiculo.trim()) {
-      setError("Informe o CARRO / código do veículo da DANFE (ex.: 30059).");
+      setError("Informe o CARRO / código do veículo.");
       return;
     }
-    if (!fotoDanfe) {
-      setError("Anexe a foto ou PDF da DANFE para registrar.");
+    if (!anexos.length) {
+      setError("Anexe ao menos um arquivo (foto, PDF ou DOC).");
       return;
     }
+    const fecharImp = podeFecharImp && comoImprocedente;
+    if (fecharImp && !defeito.trim()) {
+      setError("Para improcedente, informe o defeito (ex.: Peça ruim).");
+      return;
+    }
+
     const dataOrigemIso = toDateInput(nfOrigemData) || dataRemessaIso;
-    const dataAplicacao = dataOrigemIso;
     setLoading(true);
     try {
       const [pecaId, veiculoId, fornId] = await Promise.all([
@@ -375,22 +383,25 @@ export default function GarantiaDanfe() {
         ensureFornecedorPorNome(),
       ]);
       if (!pecaId || !veiculoId) {
-        setError(
-          "Não foi possível espelhar veículo ou peça. Confira o texto digitado (código ou nome)."
-        );
+        setError("Não foi possível gravar peça ou veículo. Confira o texto.");
         setLoading(false);
         return;
       }
       if (!fornId) {
-        setError("Informe o fornecedor destinatário (ex.: JHC AUTO IMPORTS).");
+        setError("Informe o fornecedor.");
         setLoading(false);
         return;
       }
+
+      const defeitoTxt = defeito.trim();
+      const obsTxt = observacao.trim();
       const obsParts = [
-        defeito.trim() ? `DEFEITO: ${defeito.trim()}` : "",
-        chaveNfe.trim() ? `Chave NFe remessa: ${chaveNfe.trim()}` : "",
-        `Remessa DANFE NF ${nfRemessa.trim()}${nfSerie.trim() ? ` série ${nfSerie.trim()}` : ""}.`,
-        "Caso aberto na remessa — improcedente só após análise na ficha.",
+        defeitoTxt ? `DEFEITO: ${defeitoTxt}` : "",
+        obsTxt ? `OBS: ${obsTxt}` : "",
+        `Remessa NF ${nfRemessa.trim()}${nfSerie.trim() ? ` série ${nfSerie.trim()}` : ""}.`,
+        fecharImp
+          ? "Registrada e encerrada como improcedente."
+          : "Caso aberto na remessa — improcedente só após análise na ficha.",
       ].filter(Boolean);
 
       const created = await api<{ id: number; status: string }>("/api/garantias/", {
@@ -400,41 +411,98 @@ export default function GarantiaDanfe() {
           peca: Number(pecaId),
           fornecedor: Number(fornId),
           nf_venda_fornecedor: nfOrigem.trim(),
-          nf_venda_data: dataAplicacao,
-          data_aplicacao: dataAplicacao,
+          nf_venda_data: dataOrigemIso,
+          data_aplicacao: dataOrigemIso,
           nf_compra_numero: nfOrigem.trim(),
-          nf_compra_data: dataAplicacao,
+          nf_compra_data: dataOrigemIso,
           valor_peca: valorToApi(valor),
           observacoes: obsParts.join(" "),
-          laudo_resumo: defeito.trim() ? `Defeito informado: ${defeito.trim()}` : "",
+          laudo_resumo: defeitoTxt ? `Defeito informado: ${defeitoTxt}` : "",
           nf_remessa_numero: nfRemessa.trim(),
           nf_remessa_serie: nfSerie.trim(),
           nf_remessa_data: dataRemessaIso,
-          chave_nfe_remessa: chaveNfe.replace(/\D/g, ""),
+          chave_nfe_remessa: "",
         },
       });
 
-      try {
-        const fd = new FormData();
-        fd.append("arquivo", fotoDanfe);
-        fd.append("descricao", "Foto DANFE");
-        await api(`/api/garantias/${created.id}/anexos/`, {
-          method: "POST",
-          formData: fd,
-        });
-      } catch {
+      let anexosOk = 0;
+      const falhas: string[] = [];
+      for (let i = 0; i < anexos.length; i += 1) {
+        const file = anexos[i];
+        try {
+          const fd = new FormData();
+          fd.append("arquivo", file);
+          fd.append(
+            "descricao",
+            anexos.length === 1 ? "Comprovante da nota" : `Anexo ${i + 1}: ${file.name}`
+          );
+          await api(`/api/garantias/${created.id}/anexos/`, {
+            method: "POST",
+            formData: fd,
+          });
+          anexosOk += 1;
+        } catch {
+          falhas.push(file.name);
+        }
+      }
+      if (anexosOk === 0) {
+        toast.warning("Nota criada, mas nenhum anexo foi enviado. Anexe na ficha.");
         navigate(`/garantias/${created.id}`, {
           state: {
-            warning:
-              "Remessa criada, mas o anexo da DANFE falhou. Anexe de novo abaixo.",
+            warning: "Nota criada, mas nenhum anexo foi enviado. Anexe na ficha.",
           },
         });
         return;
       }
 
+      const avisoAnexos = falhas.length
+        ? `Falhou enviar: ${falhas.join(", ")}. Complete na ficha.`
+        : "";
+
+      if (fecharImp) {
+        try {
+          await api(`/api/garantias/${created.id}/fechar-improcedente-direto/`, {
+            method: "POST",
+            body: {
+              descricao: "Encerrado na Nova remessa",
+              motivo_improcedente: defeitoTxt,
+              causa_improcedente: "outro",
+              responsavel_tipo: "oficina",
+              responsavel_nome: nomeUsuario(user),
+              cobranca_interna: false,
+              observacao_cobranca: "",
+              laudo_resumo: `Defeito informado: ${defeitoTxt}`,
+            },
+          });
+        } catch (err) {
+          const avisoImp =
+            err instanceof ApiError
+              ? `Não fechou improcedente: ${err.message}`
+              : "Não fechou improcedente. Feche na ficha.";
+          toast.warning([avisoAnexos, avisoImp].filter(Boolean).join(" "));
+          navigate(`/garantias/${created.id}`, {
+            state: {
+              warning: [avisoAnexos, avisoImp].filter(Boolean).join(" "),
+            },
+          });
+          return;
+        }
+      }
+
+      if (avisoAnexos) {
+        toast.warning(avisoAnexos);
+        navigate(`/garantias/${created.id}`, { state: { warning: avisoAnexos } });
+        return;
+      }
+
+      toast.success(
+        fecharImp ? "Nota salva e encerrada como improcedente." : "Nota cadastrada com sucesso."
+      );
       navigate(`/garantias/${created.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Erro ao registrar remessa.");
+      const msg = err instanceof ApiError ? err.message : "Erro ao registrar remessa.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -444,10 +512,10 @@ export default function GarantiaDanfe() {
     <div className="mx-auto max-w-2xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold">Nova remessa (DANFE)</h2>
+          <h2 className="text-lg font-semibold">Cadastrar nota</h2>
           <p className="text-xs text-muted">
-            Digite a DANFE e salve no SGGI. Se o código da peça existir, a descrição preenche.
-            CARRO: informe o número. Abre como <span className="text-amber">enviada</span>.
+            Informe a nota, anexe a foto e os dados básicos.
+            {podeFecharImp ? " Pode já marcar como improcedente." : ""}
           </p>
         </div>
         <Link to="/" className="text-sm text-cyan hover:underline">
@@ -457,83 +525,93 @@ export default function GarantiaDanfe() {
 
       <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-line bg-panel p-6">
         <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-cyan">NF remessa (DANFE emitida)</h3>
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Nº NF *</span>
-            <input
-              className={field}
-              value={nfRemessa}
-              onChange={(e) => setNfRemessa(e.target.value)}
-              placeholder="7427"
-            />
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm">
-              <span className="mb-1 block text-muted">Série</span>
-              <input
-                className={field}
+          <h3 className="text-sm font-semibold text-cyan">Nota fiscal</h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <Label htmlFor="nf-remessa">Nº NF remessa *</Label>
+              <Input
+                id="nf-remessa"
+                value={nfRemessa}
+                onChange={(e) => setNfRemessa(e.target.value)}
+                placeholder="7427"
+              />
+            </div>
+            <div>
+              <Label htmlFor="nf-serie">Série</Label>
+              <Input
+                id="nf-serie"
                 value={nfSerie}
                 onChange={(e) => setNfSerie(e.target.value)}
                 placeholder="1"
               />
-            </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-muted">Emissão * (obrigatório para salvar)</span>
-              <input
-                className={field}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="nf-emissao">Emissão *</Label>
+              <Input
+                id="nf-emissao"
                 value={nfRemessaData}
                 onChange={(e) => setNfRemessaData(maskDateBr(e.target.value))}
                 placeholder="dd/MM/aaaa"
                 inputMode="numeric"
                 maxLength={10}
               />
-              <span className="mt-1 block text-xs text-muted">
-                Digite só os números; as barras entram sozinhas (ex.: 16072026 → 16/07/2026).
-              </span>
-            </label>
+            </div>
+            <div>
+              <Label htmlFor="nf-valor">Valor (R$)</Label>
+              <Input
+                id="nf-valor"
+                value={valor}
+                onChange={(e) => setValor(maskValorInput(e.target.value))}
+                onBlur={() => setValor((v) => formatValorBr(v))}
+                placeholder="0,00"
+                inputMode="decimal"
+              />
+            </div>
           </div>
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Chave de acesso NFe (opcional)</span>
-            <input
-              className={field}
-              value={chaveNfe}
-              onChange={(e) => setChaveNfe(e.target.value)}
-              placeholder="44 dígitos"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Valor da peça (R$)</span>
-            <input
-              className={field}
-              value={valor}
-              onChange={(e) => setValor(maskValorInput(e.target.value))}
-              onBlur={() => setValor((v) => formatValorBr(v))}
-              placeholder="0,00"
-              inputMode="decimal"
-            />
-          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="nf-origem">NF origem *</Label>
+              <Input
+                id="nf-origem"
+                value={nfOrigem}
+                onChange={(e) => setNfOrigem(e.target.value)}
+                placeholder="Ex.: 39511"
+              />
+            </div>
+            <div>
+              <Label htmlFor="nf-origem-data">Data NF origem</Label>
+              <Input
+                id="nf-origem-data"
+                value={nfOrigemData}
+                onChange={(e) => setNfOrigemData(maskDateBr(e.target.value))}
+                placeholder="dd/MM/aaaa"
+                inputMode="numeric"
+                maxLength={10}
+              />
+            </div>
+          </div>
         </section>
 
         <section className="space-y-3 border-t border-line pt-4">
-          <h3 className="text-sm font-semibold text-cyan">Produto / veículo / fornecedor</h3>
+          <h3 className="text-sm font-semibold text-cyan">Peça / veículo / fornecedor</h3>
 
           <div>
-            <label className="mb-1 block text-sm text-muted">
-              Produto (código ou nome) * {pecaLabel ? `· ${pecaLabel}` : ""}
-            </label>
-            <input
-              className={field}
+            <Label htmlFor="peca-q">
+              Peça * {pecaLabel ? `· ${pecaLabel}` : ""}
+            </Label>
+            <Input
+              id="peca-q"
               value={qPeca}
               onChange={(e) => {
                 setQPeca(e.target.value);
                 setPeca("");
                 setPecaLabel("");
               }}
-              placeholder="Ex.: 03120026 ou VALVULA…"
+              placeholder="Código ou nome"
+              autoComplete="off"
             />
-            <p className="mt-1 text-xs text-muted">
-              Se o código existir, a descrição preenche. Senão, grava o que você digitou.
-            </p>
             {hitsPeca.length ? (
               <ul className="mt-1 max-h-36 overflow-auto rounded-lg border border-line bg-bg text-sm">
                 {hitsPeca.map((p) => (
@@ -552,11 +630,11 @@ export default function GarantiaDanfe() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-muted">
+            <Label htmlFor="veiculo-q">
               Veículo (CARRO) * {veiculoLabel ? `· ${veiculoLabel}` : ""}
-            </label>
-            <input
-              className={field}
+            </Label>
+            <Input
+              id="veiculo-q"
               value={qVeiculo}
               onChange={(e) => {
                 setQVeiculo(e.target.value);
@@ -564,10 +642,8 @@ export default function GarantiaDanfe() {
                 setVeiculoLabel("");
               }}
               placeholder="Ex.: 30059"
+              autoComplete="off"
             />
-            <p className="mt-1 text-xs text-muted">
-              Digite o CARRO da DANFE e salve — não precisa clicar na sugestão.
-            </p>
             {hitsVeiculo.length ? (
               <ul className="mt-1 max-h-36 overflow-auto rounded-lg border border-line bg-bg text-sm">
                 {hitsVeiculo.map((v) => (
@@ -585,17 +661,18 @@ export default function GarantiaDanfe() {
             ) : null}
           </div>
 
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Fornecedor destinatário *</span>
-            <input
-              className={field}
+          <div>
+            <Label htmlFor="fornecedor-q">Fornecedor *</Label>
+            <Input
+              id="fornecedor-q"
               value={qFornecedor}
               onChange={(e) => {
                 setQFornecedor(e.target.value);
                 setFornecedor("");
               }}
-              placeholder="Ex.: JHC AUTO IMPORTS"
+              placeholder="Nome do fornecedor"
               list="danfe-fornecedores"
+              autoComplete="off"
             />
             <datalist id="danfe-fornecedores">
               {fornecedoresFiltrados.slice(0, 20).map((f) => (
@@ -620,81 +697,120 @@ export default function GarantiaDanfe() {
                 ))}
               </ul>
             ) : null}
-          </label>
+          </div>
 
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Defeito (infos complementares)</span>
-            <input
-              className={field}
+          <div>
+            <Label>Defeito</Label>
+            <div className="mb-2 flex flex-wrap gap-2">
+              {DEFEITO_ATALHOS.map((label) => (
+                <Button
+                  key={label}
+                  type="button"
+                  size="sm"
+                  variant={defeito === label ? "default" : "outline"}
+                  onClick={() => setDefeito(label)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <Input
               value={defeito}
               onChange={(e) => setDefeito(e.target.value)}
-              placeholder="Ex.: VAZAMENTO"
+              placeholder="Peça ruim, peça falha ou descreva…"
             />
-          </label>
-        </section>
+          </div>
 
-        <section className="space-y-3 border-t border-line pt-4">
-          <h3 className="text-sm font-semibold text-cyan">NF origem (complementares)</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm">
-              <span className="mb-1 block text-muted">NF origem / compra *</span>
-              <input
-                className={field}
-                value={nfOrigem}
-                onChange={(e) => setNfOrigem(e.target.value)}
-                placeholder="Ex.: 39511"
-              />
-            </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-muted">Data NF origem (se souber)</span>
-              <input
-                className={field}
-                value={nfOrigemData}
-                onChange={(e) => setNfOrigemData(maskDateBr(e.target.value))}
-                placeholder="dd/MM/aaaa"
-                inputMode="numeric"
-                maxLength={10}
-              />
-            </label>
+          <div>
+            <Label htmlFor="observacao">Observação (opcional)</Label>
+            <Textarea
+              id="observacao"
+              className="min-h-[96px] resize-y"
+              value={observacao}
+              onChange={(e) => setObservacao(e.target.value)}
+              placeholder="O que aconteceu, falha, quem reportou…"
+              rows={4}
+            />
           </div>
         </section>
 
         <section className="space-y-2 border-t border-line pt-4">
-          <h3 className="text-sm font-semibold text-cyan">Foto / PDF da DANFE *</h3>
+          <h3 className="text-sm font-semibold text-cyan">Anexos (comprovante) *</h3>
           <label className="block text-sm">
             <input
               type="file"
-              accept="image/*,.pdf,application/pdf"
-              capture="environment"
+              multiple
+              accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               className="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-cyan/20 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-cyan"
-              onChange={(e) => setFotoDanfe(e.target.files?.[0] || null)}
+              onChange={(e) => {
+                const lista = Array.from(e.target.files || []);
+                if (!lista.length) return;
+                setAnexos((prev) => {
+                  const nomes = new Set(prev.map((f) => `${f.name}:${f.size}`));
+                  const novos = lista.filter((f) => !nomes.has(`${f.name}:${f.size}`));
+                  return [...prev, ...novos];
+                });
+                e.target.value = "";
+              }}
             />
             <span className="mt-1 block text-xs text-muted">
-              Obrigatório para registrar. No celular, use a câmera se preferir.
+              Um ou mais arquivos: foto, PDF ou DOC. Pode selecionar várias vezes.
             </span>
-            {fotoDanfe ? (
-              <span className="mt-1 block text-xs text-green">Selecionado: {fotoDanfe.name}</span>
-            ) : null}
           </label>
+          {anexos.length ? (
+            <ul className="space-y-1 rounded-lg border border-line bg-bg/40 px-3 py-2 text-sm">
+              {anexos.map((f, idx) => (
+                <li
+                  key={`${f.name}-${f.size}-${idx}`}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="truncate text-green">
+                    {f.name}
+                    <span className="ml-2 text-xs text-muted">
+                      ({Math.max(1, Math.round(f.size / 1024))} KB)
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs text-red hover:underline"
+                    onClick={() => setAnexos((prev) => prev.filter((_, i) => i !== idx))}
+                  >
+                    Remover
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
+
+        {podeFecharImp ? (
+          <label className="flex items-start gap-2 rounded-lg border border-line bg-bg/40 px-3 py-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={comoImprocedente}
+              onChange={(e) => setComoImprocedente(e.target.checked)}
+            />
+            <span>
+              <span className="font-semibold">Já é improcedente</span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Salva a nota com os anexos e encerra na hora (informe o defeito).
+              </span>
+            </span>
+          </label>
+        ) : null}
 
         {error ? <p className="text-sm text-red">{error}</p> : null}
         {msg ? <p className="text-sm text-green">{msg}</p> : null}
 
-        <div className="flex flex-wrap gap-2 pt-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-cyan px-4 py-2 text-sm font-semibold text-bg disabled:opacity-60"
-          >
-            {loading ? "Salvando…" : "Registrar remessa no SGGI"}
-          </button>
-          <Link
-            to="/garantias/nova"
-            className="rounded-lg border border-line px-4 py-2 text-sm text-muted hover:text-ink"
-          >
-            Formulário completo
-          </Link>
+        <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+          <Button type="submit" disabled={loading} size="lg">
+            {loading
+              ? "Salvando…"
+              : podeFecharImp && comoImprocedente
+                ? "Salvar e fechar improcedente"
+                : "Salvar nota"}
+          </Button>
         </div>
       </form>
     </div>

@@ -1,7 +1,8 @@
+/** Rótulos amigáveis para quem não mexe com TI. */
 const LABELS: Record<string, string> = {
-  aberta: "Aberta",
-  enviada: "Enviada",
-  em_analise: "Em análise",
+  aberta: "Em andamento",
+  enviada: "Em andamento",
+  em_analise: "Em andamento",
   procedente: "Procedente",
   improcedente: "Improcedente",
   cortesia: "Cortesia",
@@ -9,7 +10,7 @@ const LABELS: Record<string, string> = {
 };
 
 const COLORS: Record<string, string> = {
-  aberta: "bg-cyan/15 text-cyan border-cyan/40",
+  aberta: "bg-amber/15 text-amber border-amber/40",
   enviada: "bg-amber/15 text-amber border-amber/40",
   em_analise: "bg-amber/15 text-amber border-amber/40",
   procedente: "bg-green/15 text-green border-green/40",

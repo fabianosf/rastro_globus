@@ -1,9 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { canCreateGarantia, canDeleteGarantia, canEditGarantia } from "../auth/permissions";
-import BadgeStatus, { statusLabel } from "../components/BadgeStatus";
+import { canCreateGarantia, canDeleteGarantia } from "../auth/permissions";
+import BadgeStatus from "../components/BadgeStatus";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type GarantiaRow = {
   id: number;
@@ -17,13 +28,18 @@ type GarantiaRow = {
   valor_peca: string | null;
 };
 
-const STATUS_OPTS = [
-  { value: "", label: "Todos" },
-  { value: "abertos", label: "Abertos" },
-  { value: "enviada", label: "Enviada" },
-  { value: "em_analise", label: "Em análise" },
-  { value: "improcedente", label: "Improcedente" },
-  { value: "procedente", label: "Procedente" },
+type ResumoAno = {
+  ano: number;
+  contagem_status: Record<string, number>;
+  valor_improcedente: string;
+  valor_aberto: string;
+  valor_procedente?: string;
+};
+
+const FILTROS = [
+  { value: "", label: "Todas" },
+  { value: "abertos", label: "Em andamento" },
+  { value: "improcedente", label: "Improcedentes" },
 ] as const;
 
 function money(v: string | number | null | undefined) {
@@ -42,18 +58,6 @@ function useDebounced(value: string, ms: number) {
   return debounced;
 }
 
-/** Compara queries ignorando ordem das chaves. */
-function sameQuery(a: URLSearchParams, b: URLSearchParams) {
-  const ka = [...a.keys()].sort();
-  const kb = [...b.keys()].sort();
-  if (ka.length !== kb.length) return false;
-  for (let i = 0; i < ka.length; i += 1) {
-    if (ka[i] !== kb[i]) return false;
-    if ((a.get(ka[i]) || "") !== (b.get(kb[i]) || "")) return false;
-  }
-  return true;
-}
-
 export default function GarantiasList() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
@@ -63,174 +67,172 @@ export default function GarantiasList() {
     [anoAtual]
   );
 
-  const paramsKey = params.toString();
-  const statusExplicit = params.has("status");
-  const status = statusExplicit ? params.get("status") || "" : "abertos";
+  const status = params.get("status") || "";
   const ano = params.get("ano") || String(anoAtual);
   const qParam = params.get("q") || "";
-  const dataIni = params.get("data_ini") || "";
-  const dataFim = params.get("data_fim") || "";
-  const periodoAtivo = Boolean(dataIni || dataFim);
 
   const [qInput, setQInput] = useState(qParam);
   const qDebounced = useDebounced(qInput, 350);
-  const settled = qInput === qDebounced;
 
   const [rows, setRows] = useState<GarantiaRow[]>([]);
+  const [resumo, setResumo] = useState<ResumoAno | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [toDelete, setToDelete] = useState<GarantiaRow | null>(null);
   const fetchGen = useRef(0);
 
-  // URL → input só quando debounce está quieto (evita luta com digitação).
   useEffect(() => {
-    if (!settled) return;
-    if (qParam === qInput) return;
-    setQInput(qParam);
-  }, [qParam, qInput, settled]);
-
-  // Um único escritor de URL: defaults + q debounced.
-  useEffect(() => {
-    const next = new URLSearchParams(paramsKey);
-    // Reparse from paramsKey to avoid stale object identity issues
-    const current = new URLSearchParams(paramsKey);
-
-    if (!current.get("data_ini") && !current.get("data_fim") && !current.get("ano")) {
-      next.set("ano", String(anoAtual));
-    }
-    if (!current.has("status")) {
-      next.set("status", "abertos");
-    }
-
-    if (settled) {
-      const qNext = qDebounced.trim();
-      if (qNext) next.set("q", qNext);
-      else next.delete("q");
-    }
-
-    if (sameQuery(current, next)) return;
+    if (params.get("ano")) return;
+    const next = new URLSearchParams(params);
+    next.set("ano", String(anoAtual));
     setParams(next, { replace: true });
-  }, [paramsKey, qDebounced, settled, anoAtual, setParams]);
+  }, [anoAtual, params, setParams]);
+
+  useEffect(() => {
+    if (qDebounced.trim() === qParam.trim()) return;
+    const next = new URLSearchParams(params);
+    if (qDebounced.trim()) next.set("q", qDebounced.trim());
+    else next.delete("q");
+    setParams(next, { replace: true });
+  }, [qDebounced, qParam, params, setParams]);
+
+  useEffect(() => {
+    setQInput(qParam);
+  }, [qParam]);
 
   useEffect(() => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
-    if (periodoAtivo) {
-      if (dataIni) qs.set("data_ini", dataIni);
-      if (dataFim) qs.set("data_fim", dataFim);
-    } else {
-      qs.set("ano", ano || String(anoAtual));
-    }
+    qs.set("ano", ano || String(anoAtual));
     if (qParam.trim()) qs.set("q", qParam.trim());
 
     const gen = ++fetchGen.current;
     setLoading(true);
     setError("");
-    api<GarantiaRow[]>(`/api/garantias/?${qs}`)
-      .then((data) => {
+    Promise.all([
+      api<GarantiaRow[]>(`/api/garantias/?${qs}`),
+      api<ResumoAno>(`/api/relatorios/resumo/?ano=${ano || anoAtual}`),
+    ])
+      .then(([lista, r]) => {
         if (gen !== fetchGen.current) return;
-        setRows(Array.isArray(data) ? data : []);
+        setRows(Array.isArray(lista) ? lista : []);
+        setResumo(r);
       })
       .catch((e) => {
         if (gen !== fetchGen.current) return;
-        setError(e instanceof ApiError ? e.message : "Erro ao listar.");
+        setError(e instanceof ApiError ? e.message : "Erro ao carregar notas.");
         setRows([]);
+        setResumo(null);
       })
       .finally(() => {
         if (gen !== fetchGen.current) return;
         setLoading(false);
       });
-  }, [status, ano, qParam, dataIni, dataFim, periodoAtivo, anoAtual]);
+  }, [status, ano, qParam, anoAtual]);
 
-  async function excluir(row: GarantiaRow) {
-    if (!canDeleteGarantia(user?.perfil, row.status)) return;
-    const ok = window.confirm(
-      `Excluir ${row.protocolo}${row.nf_remessa ? ` (NF ${row.nf_remessa})` : ""}? Esta ação não tem volta.`
-    );
-    if (!ok) return;
+  const contagem = resumo?.contagem_status || {};
+  const qtdTotal = Object.values(contagem).reduce((a, b) => a + (b || 0), 0);
+  const qtdImp = contagem.improcedente || 0;
+  const qtdAndamento =
+    (contagem.aberta || 0) + (contagem.enviada || 0) + (contagem.em_analise || 0);
+
+  const valorAno =
+    Number(resumo?.valor_improcedente || 0) +
+    Number(resumo?.valor_aberto || 0) +
+    Number(resumo?.valor_procedente || 0);
+
+  const valorCard =
+    status === "improcedente"
+      ? Number(resumo?.valor_improcedente || 0)
+      : status === "abertos"
+        ? Number(resumo?.valor_aberto || 0)
+        : valorAno;
+
+  const qtdCard =
+    status === "improcedente" ? qtdImp : status === "abertos" ? qtdAndamento : qtdTotal;
+
+  async function confirmarExclusao() {
+    const row = toDelete;
+    if (!row || !canDeleteGarantia(user?.perfil, row.status)) return;
     setDeletingId(row.id);
     setError("");
     try {
       await api(`/api/garantias/${row.id}/`, { method: "DELETE" });
       setRows((prev) => prev.filter((r) => r.id !== row.id));
+      toast.success("Nota excluída.");
+      setToDelete(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao excluir.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao excluir.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setDeletingId(null);
     }
   }
 
-  function patchUrl(patch: {
-    status?: string;
-    ano?: string;
-    data_ini?: string;
-    data_fim?: string;
-  }) {
-    const next = new URLSearchParams(params);
-    if (patch.status !== undefined) {
-      next.set("status", patch.status);
-    }
-    if (patch.ano !== undefined) {
-      next.set("ano", patch.ano);
-      next.delete("data_ini");
-      next.delete("data_fim");
-    }
-    if (patch.data_ini !== undefined) {
-      if (patch.data_ini) next.set("data_ini", patch.data_ini);
-      else next.delete("data_ini");
-    }
-    if (patch.data_fim !== undefined) {
-      if (patch.data_fim) next.set("data_fim", patch.data_fim);
-      else next.delete("data_fim");
-    }
-    if (next.get("data_ini") || next.get("data_fim")) next.delete("ano");
-    else if (!next.get("ano")) next.set("ano", String(anoAtual));
-    if (sameQuery(params, next)) return;
+  function setFiltro(value: string) {
+    const next = new URLSearchParams();
+    next.set("ano", ano || String(anoAtual));
+    if (value) next.set("status", value);
+    if (qParam.trim()) next.set("q", qParam.trim());
     setParams(next, { replace: true });
   }
-
-  function limpar() {
-    setQInput("");
-    const next = new URLSearchParams({ ano: String(anoAtual), status: "abertos" });
-    setParams(next, { replace: true });
-  }
-
-  const statusEmptyLabel =
-    status === "abertos" ? "abertos" : status ? statusLabel(status) : "";
-  const periodoLabel = periodoAtivo
-    ? `${dataIni || "…"} → ${dataFim || "…"}`
-    : `ano ${ano || anoAtual}`;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-muted">Garantias no SGGI · {periodoLabel}</p>
-          <p className="text-xs text-muted">Fluxo: remessa → análise → fechar.</p>
+          <p className="text-sm text-muted">Notas de {ano}</p>
+          <p className="text-xs text-muted">Cadastre a nota, anexe a foto e acompanhe o valor.</p>
         </div>
         {canCreateGarantia(user?.perfil) ? (
-          <Link
-            to="/garantias/nova-danfe"
-            className="rounded-lg bg-cyan px-4 py-2 text-sm font-semibold text-bg"
-          >
-            Nova remessa
-          </Link>
+          <Button render={<Link to="/garantias/nova-danfe" />} size="lg">
+            Cadastrar nota
+          </Button>
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-3">
-        <input
-          className="min-w-[180px] flex-1 rounded-lg border border-line bg-bg px-3 py-1.5 text-sm"
-          placeholder="Protocolo, NF, peça, CARRO, fornecedor…"
-          value={qInput}
-          onChange={(e) => setQInput(e.target.value)}
-        />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-line bg-panel px-4 py-4">
+          <p className="text-xs text-muted">Quantidade de notas</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{qtdCard}</p>
+        </div>
+        <div className="rounded-xl border border-line bg-panel px-4 py-4">
+          <p className="text-xs text-muted">Valor total</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-cyan">{money(valorCard)}</p>
+        </div>
+        <div className="rounded-xl border border-line bg-panel px-4 py-4">
+          <p className="text-xs text-muted">Improcedentes ({ano})</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-red">{qtdImp}</p>
+          <p className="mt-0.5 text-xs text-muted">{money(resumo?.valor_improcedente)}</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {FILTROS.map((f) => (
+          <button
+            key={f.value || "todas"}
+            type="button"
+            onClick={() => setFiltro(f.value)}
+            className={
+              status === f.value
+                ? "rounded-lg bg-cyan/20 px-3 py-1.5 text-sm font-semibold text-cyan"
+                : "rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:text-ink"
+            }
+          >
+            {f.label}
+          </button>
+        ))}
         <select
-          className="w-24 rounded-lg border border-line bg-bg px-2 py-1.5 text-sm disabled:opacity-50"
+          className="ml-auto rounded-lg border border-line bg-bg px-2 py-1.5 text-sm"
           value={anos.includes(ano) ? ano : String(anoAtual)}
-          disabled={periodoAtivo}
-          title={periodoAtivo ? "Ano desativado quando há período" : "Ano"}
-          onChange={(e) => patchUrl({ ano: e.target.value })}
+          onChange={(e) => {
+            const next = new URLSearchParams(params);
+            next.set("ano", e.target.value);
+            setParams(next, { replace: true });
+          }}
+          title="Ano"
         >
           {anos.map((a) => (
             <option key={a} value={a}>
@@ -238,133 +240,110 @@ export default function GarantiasList() {
             </option>
           ))}
         </select>
-        <select
-          className="rounded-lg border border-line bg-bg px-2 py-1.5 text-sm"
-          value={STATUS_OPTS.some((o) => o.value === status) ? status : ""}
-          title="Status"
-          onChange={(e) => patchUrl({ status: e.target.value })}
-        >
-          {STATUS_OPTS.map((o) => (
-            <option key={o.value || "todos"} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-1 text-xs text-muted">
-          De
-          <input
-            type="date"
-            className="rounded-lg border border-line bg-bg px-2 py-1.5 text-sm text-ink"
-            value={dataIni}
-            onChange={(e) => patchUrl({ data_ini: e.target.value })}
-          />
-        </label>
-        <label className="flex items-center gap-1 text-xs text-muted">
-          Até
-          <input
-            type="date"
-            className="rounded-lg border border-line bg-bg px-2 py-1.5 text-sm text-ink"
-            value={dataFim}
-            onChange={(e) => patchUrl({ data_fim: e.target.value })}
-          />
-        </label>
-        <button
-          type="button"
-          className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted"
-          onClick={limpar}
-        >
-          Limpar
-        </button>
+        <Input
+          className="min-w-[160px] sm:w-52"
+          placeholder="Buscar NF, peça…"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+        />
       </div>
 
       {error ? <p className="text-red">{error}</p> : null}
-      {loading ? <p className="text-muted">Carregando...</p> : null}
+      {loading ? <p className="text-muted">Carregando…</p> : null}
 
       <div className="overflow-x-auto rounded-xl border border-line bg-panel">
-        <table className="w-full min-w-[800px] text-left text-sm">
+        <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-line text-muted">
             <tr>
-              <th className="px-3 py-3 font-medium">Protocolo</th>
-              <th className="px-3 py-3 font-medium">NF remessa</th>
+              <th className="px-3 py-3 font-medium">Nota</th>
               <th className="px-3 py-3 font-medium">Peça</th>
-              <th className="px-3 py-3 font-medium">CARRO</th>
-              <th className="px-3 py-3 font-medium">Fornecedor</th>
+              <th className="px-3 py-3 font-medium">Carro</th>
               <th className="px-3 py-3 font-medium">Valor</th>
-              <th className="px-3 py-3 font-medium">Status</th>
-              <th className="px-3 py-3 font-medium">Ações</th>
+              <th className="px-3 py-3 font-medium">Situação</th>
+              <th className="px-3 py-3 font-medium" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
-              const podeEditar =
-                canEditGarantia(user?.perfil) &&
-                ["aberta", "enviada", "em_analise"].includes(r.status);
-              const podeExcluir = canDeleteGarantia(user?.perfil, r.status);
-              return (
-                <tr key={r.id} className="border-t border-line hover:bg-bg/40">
-                  <td className="px-3 py-3">
-                    <Link className="text-cyan hover:underline" to={`/garantias/${r.id}`}>
-                      {r.protocolo}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-3">{r.nf_remessa || "—"}</td>
-                  <td className="px-3 py-3">{r.peca_nome}</td>
-                  <td className="px-3 py-3">{r.veiculo_codigo}</td>
-                  <td className="px-3 py-3">{r.fornecedor_nome}</td>
-                  <td className="px-3 py-3 whitespace-nowrap text-xs">{money(r.valor_peca)}</td>
-                  <td className="px-3 py-3">
-                    <BadgeStatus status={r.status} />
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Link
-                        to={`/garantias/${r.id}`}
-                        className="text-xs text-cyan hover:underline"
-                      >
-                        {podeEditar ? "Editar" : "Ver"}
-                      </Link>
-                      {podeExcluir ? (
-                        <button
-                          type="button"
-                          disabled={deletingId === r.id}
-                          onClick={() => void excluir(r)}
-                          className="text-xs text-red hover:underline disabled:opacity-50"
-                        >
-                          {deletingId === r.id ? "…" : "Excluir"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.map((r) => (
+              <tr key={r.id} className="border-t border-line hover:bg-bg/40">
+                <td className="px-3 py-3">
+                  <Link className="font-medium text-cyan hover:underline" to={`/garantias/${r.id}`}>
+                    {r.nf_remessa || r.protocolo}
+                  </Link>
+                  <p className="text-xs text-muted">{r.fornecedor_nome}</p>
+                </td>
+                <td className="px-3 py-3">{r.peca_nome}</td>
+                <td className="px-3 py-3">{r.veiculo_codigo}</td>
+                <td className="px-3 py-3 whitespace-nowrap">{money(r.valor_peca)}</td>
+                <td className="px-3 py-3">
+                  <BadgeStatus status={r.status} />
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <Link to={`/garantias/${r.id}`} className="text-xs text-cyan hover:underline">
+                    Ver
+                  </Link>
+                  {canDeleteGarantia(user?.perfil, r.status) ? (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      disabled={deletingId === r.id}
+                      onClick={() => setToDelete(r)}
+                      className="ml-2 h-auto p-0 text-xs text-destructive"
+                    >
+                      {deletingId === r.id ? "…" : "Excluir"}
+                    </Button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
             {!loading && !rows.length ? (
               <tr>
-                <td colSpan={8} className="px-3 py-10 text-center">
-                  <p className="text-base font-medium text-ink">Nenhuma garantia ainda</p>
+                <td colSpan={6} className="px-3 py-12 text-center">
+                  <p className="text-base font-medium text-ink">Nenhuma nota ainda</p>
                   <p className="mt-1 text-sm text-muted">
-                    {statusEmptyLabel
-                      ? `Nenhum caso “${statusEmptyLabel}” em ${periodoLabel}.`
-                      : `Nada em ${periodoLabel}.`}
+                    Cadastre a primeira nota com a foto da NF.
                   </p>
                   {canCreateGarantia(user?.perfil) ? (
-                    <Link
-                      to="/garantias/nova-danfe"
-                      className="mt-4 inline-block rounded-lg bg-cyan px-5 py-2.5 text-sm font-semibold text-bg"
+                    <Button
+                      render={<Link to="/garantias/nova-danfe" />}
+                      className="mt-4"
+                      size="lg"
                     >
-                      Registrar nova remessa
-                    </Link>
-                  ) : (
-                    <p className="mt-3 text-xs text-muted">
-                      Peça à oficina ou manutenção para cadastrar a remessa.
-                    </p>
-                  )}
+                      Cadastrar nota
+                    </Button>
+                  ) : null}
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
       </div>
+
+      <Dialog open={!!toDelete} onOpenChange={(open) => !open && setToDelete(null)}>
+        <DialogContent showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Excluir nota?</DialogTitle>
+            <DialogDescription>
+              Excluir a nota {toDelete?.nf_remessa || toDelete?.protocolo}? Esta ação não tem
+              volta.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setToDelete(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingId !== null}
+              onClick={() => void confirmarExclusao()}
+            >
+              {deletingId !== null ? "Excluindo…" : "Excluir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
