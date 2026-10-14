@@ -417,7 +417,7 @@ class GarantiaViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), CanEditGarantia()]
         if self.action in ("status", "fechar_improcedente_direto_action"):
             return [IsAuthenticated(), CanChangeStatus()]
-        if self.action == "anexos":
+        if self.action in ("anexos", "anexos_detail"):
             return [IsAuthenticated(), CanAnexar()]
         if self.action == "vincular_nota":
             return [IsAuthenticated(), CanVincularNota()]
@@ -708,6 +708,19 @@ class GarantiaViewSet(viewsets.ModelViewSet):
             enviado_por=request.user,
         )
         return Response(AnexoSerializer(anexo, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path=r"anexos/(?P<anexo_id>[0-9]+)")
+    def anexos_detail(self, request, pk=None, anexo_id=None):
+        garantia = self.get_object()
+        try:
+            anexo = garantia.anexos.get(pk=anexo_id)
+        except Anexo.DoesNotExist:
+            return Response({"detail": "Anexo não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        storage_name = anexo.arquivo.name if anexo.arquivo else ""
+        if storage_name:
+            anexo.arquivo.delete(save=False)
+        anexo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="notas")
     def vincular_nota(self, request, pk=None):

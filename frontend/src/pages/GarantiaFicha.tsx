@@ -21,6 +21,14 @@ import {
 } from "../components/GlobusStatusBadge";
 import Timeline, { type Evento } from "../components/Timeline";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type HistoricoGlobusPayload = {
   peca_codigo: string;
@@ -124,6 +132,13 @@ const STATUS_FECHADO = new Set(["procedente", "improcedente", "cortesia", "cance
 const field =
   "w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-cyan";
 
+function kindFromUrl(url: string): "image" | "pdf" | "other" {
+  const path = (url || "").split("?")[0].toLowerCase();
+  if (/\.(jpe?g|png|gif|webp|bmp)$/.test(path)) return "image";
+  if (/\.pdf$/.test(path)) return "pdf";
+  return "other";
+}
+
 function textoProximoPasso(
   status: string,
   opts: { allowAdvance: boolean; allowClose: boolean; perfil?: string | null }
@@ -187,6 +202,10 @@ export default function GarantiaFicha() {
   const [obsCobranca, setObsCobranca] = useState("");
   const [nfGlobo, setNfGlobo] = useState("");
   const [anexoFiles, setAnexoFiles] = useState<File[]>([]);
+  const [toDeleteAnexo, setToDeleteAnexo] = useState<{ id: number; label: string } | null>(null);
+  const [anexoBusy, setAnexoBusy] = useState(false);
+  const [replaceAnexoId, setReplaceAnexoId] = useState<number | null>(null);
+  const replaceAnexoRef = useRef<HTMLInputElement>(null);
   const [buscandoNf, setBuscandoNf] = useState<"remessa" | "retorno" | "globo" | null>(null);
   const [hitsNfGlobus, setHitsNfGlobus] = useState<GlobusNf[]>([]);
   const [hitsNfTipo, setHitsNfTipo] = useState<"remessa" | "retorno" | "globo" | null>(null);
@@ -563,15 +582,16 @@ export default function GarantiaFicha() {
     }
   }
 
-  async function uploadAnexo(e: FormEvent) {
-    e.preventDefault();
+  async function uploadAnexo(e?: FormEvent) {
+    e?.preventDefault();
     const arquivo = anexoFiles[0];
     if (!g || !arquivo) return;
     setError("");
     setMsg("");
+    setAnexoBusy(true);
     const fd = new FormData();
     fd.append("arquivo", arquivo);
-    fd.append("descricao", "Anexo da ficha");
+    fd.append("descricao", "Comprovante da nota");
     try {
       await api(`/api/garantias/${g.id}/anexos/`, { method: "POST", formData: fd });
       setAnexoFiles([]);
@@ -579,6 +599,45 @@ export default function GarantiaFicha() {
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Erro no upload.");
+    } finally {
+      setAnexoBusy(false);
+    }
+  }
+
+  async function excluirAnexoConfirmado() {
+    if (!g || !toDeleteAnexo) return;
+    setAnexoBusy(true);
+    setError("");
+    try {
+      await api(`/api/garantias/${g.id}/anexos/${toDeleteAnexo.id}/`, { method: "DELETE" });
+      setToDeleteAnexo(null);
+      setMsg("Anexo excluído.");
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Erro ao excluir anexo.");
+    } finally {
+      setAnexoBusy(false);
+    }
+  }
+
+  async function trocarAnexo(file: File, anexoId: number) {
+    if (!g) return;
+    setAnexoBusy(true);
+    setError("");
+    try {
+      await api(`/api/garantias/${g.id}/anexos/${anexoId}/`, { method: "DELETE" });
+      const fd = new FormData();
+      fd.append("arquivo", file);
+      fd.append("descricao", "Comprovante da nota");
+      await api(`/api/garantias/${g.id}/anexos/`, { method: "POST", formData: fd });
+      setMsg("Anexo trocado.");
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Erro ao trocar anexo.");
+      load();
+    } finally {
+      setReplaceAnexoId(null);
+      setAnexoBusy(false);
     }
   }
 
@@ -726,6 +785,158 @@ export default function GarantiaFicha() {
 
       {error ? <p className="text-sm text-red">{error}</p> : null}
       {msg ? <p className="text-sm text-green">{msg}</p> : null}
+
+      <section className="space-y-3 rounded-xl border border-line bg-panel p-4">
+        <div>
+          <h3 className="font-semibold">Foto / anexos da nota</h3>
+          <p className="text-xs text-muted">
+            Confira o comprovante. Pode abrir, trocar ou excluir antes de seguir.
+          </p>
+        </div>
+
+        <input
+          ref={replaceAnexoRef}
+          type="file"
+          accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            const id = replaceAnexoId;
+            e.target.value = "";
+            if (file && id != null) void trocarAnexo(file, id);
+          }}
+        />
+
+        {g.anexos?.length ? (
+          <ul className="space-y-3">
+            {g.anexos.map((a) => {
+              const kind = kindFromUrl(a.arquivo);
+              return (
+                <li
+                  key={a.id}
+                  className="overflow-hidden rounded-xl border border-line bg-bg/40"
+                >
+                  <div className="border-b border-line px-3 py-2 text-sm">
+                    <p className="font-medium">{a.descricao || "Arquivo"}</p>
+                    <p className="text-xs text-muted">
+                      {new Date(a.enviado_em).toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+                  <div className="p-2">
+                    {kind === "image" ? (
+                      <img
+                        src={a.arquivo}
+                        alt={a.descricao || "Anexo"}
+                        className="max-h-72 w-full rounded-lg object-contain bg-bg"
+                      />
+                    ) : kind === "pdf" ? (
+                      <iframe
+                        title={a.descricao || "PDF"}
+                        src={a.arquivo}
+                        className="h-64 w-full rounded-lg border border-line bg-bg"
+                      />
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
+                        Pré-visualização não disponível. Use Abrir para ver o arquivo.
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2 border-t border-line px-3 py-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      render={<a href={a.arquivo} target="_blank" rel="noreferrer" />}
+                    >
+                      Abrir
+                    </Button>
+                    {allowAnexar ? (
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={anexoBusy}
+                          onClick={() => {
+                            setReplaceAnexoId(a.id);
+                            replaceAnexoRef.current?.click();
+                          }}
+                        >
+                          Trocar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          disabled={anexoBusy}
+                          onClick={() =>
+                            setToDeleteAnexo({
+                              id: a.id,
+                              label: a.descricao || "este anexo",
+                            })
+                          }
+                        >
+                          Excluir
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-sm text-amber">
+            Nenhuma foto anexada ainda.
+          </p>
+        )}
+
+        {allowAnexar ? (
+          <form onSubmit={uploadAnexo} className="space-y-3 border-t border-line pt-3">
+            <AnexoPickerPreview
+              files={anexoFiles}
+              onChange={setAnexoFiles}
+              multiple={false}
+              label={g.anexos?.length ? "Adicionar outro arquivo" : "Anexar foto / arquivo"}
+              hint="Confira a prévia. Pode trocar ou remover antes de enviar."
+            />
+            <Button
+              type="submit"
+              disabled={!anexoFiles.length || anexoBusy}
+              className="w-full sm:w-auto"
+            >
+              {anexoBusy ? "Enviando…" : "Enviar anexo"}
+            </Button>
+          </form>
+        ) : null}
+      </section>
+
+      <Dialog
+        open={!!toDeleteAnexo}
+        onOpenChange={(open) => !open && setToDeleteAnexo(null)}
+      >
+        <DialogContent showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Excluir anexo?</DialogTitle>
+            <DialogDescription>
+              Remover {toDeleteAnexo?.label}? Esta ação não tem volta.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setToDeleteAnexo(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={anexoBusy}
+              onClick={() => void excluirAnexoConfirmado()}
+            >
+              {anexoBusy ? "Excluindo…" : "Excluir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-2">
         <section className="min-w-0 space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
@@ -1495,22 +1706,10 @@ export default function GarantiaFicha() {
             )}
 
             {allowAnexar ? (
-              <form onSubmit={uploadAnexo} className="space-y-3 border-t border-line pt-3">
-                <AnexoPickerPreview
-                  files={anexoFiles}
-                  onChange={setAnexoFiles}
-                  multiple={false}
-                  label="Anexar arquivo"
-                  hint="Confira a prévia. Pode trocar ou remover antes de enviar."
-                />
-                <Button
-                  type="submit"
-                  disabled={!anexoFiles.length}
-                  className="w-full sm:w-auto"
-                >
-                  Enviar anexo
-                </Button>
-              </form>
+              <p className="border-t border-line pt-3 text-xs text-muted">
+                Para anexar ou trocar a foto da nota, use a seção <strong>Foto / anexos</strong> no
+                topo da ficha.
+              </p>
             ) : null}
           </>
         ) : (
@@ -1650,25 +1849,6 @@ export default function GarantiaFicha() {
         <Timeline eventos={g.eventos || []} />
       </section>
 
-      {g.anexos?.length ? (
-        <section className="rounded-xl border border-line bg-panel p-4">
-          <h3 className="mb-3 font-semibold">Anexos</h3>
-          <ul className="space-y-2 text-sm">
-            {g.anexos.map((a) => (
-              <li key={a.id}>
-                <a
-                  className="text-cyan hover:underline"
-                  href={a.arquivo}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {a.descricao || "Arquivo"} — {new Date(a.enviado_em).toLocaleString("pt-BR")}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
     </div>
   );
 }
