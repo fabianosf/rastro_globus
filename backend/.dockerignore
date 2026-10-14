@@ -1,11 +1,15 @@
 .venv
 __pycache__
 **/__pycache__
+**/.pytest_cache
+**/tests
+**/test_*.py
 *.py[cod]
 db.sqlite3
 db.sqlite3-journal
 media
 *.log
+*.md
 .env
 .env.*
 .git
