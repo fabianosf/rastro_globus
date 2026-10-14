@@ -109,9 +109,9 @@ export default function Relatorios() {
   );
 
   return (
-    <div className="space-y-5">
-      <div className="no-print flex flex-wrap items-end justify-between gap-3">
-        <div>
+    <div className="min-w-0 space-y-5">
+      <div className="no-print flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <p className="text-sm text-muted">
             Notas do ano {ano} — custo improcedente
           </p>
@@ -119,9 +119,9 @@ export default function Relatorios() {
             Improcedente = custo da empresa (não do fornecedor).
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <select
-            className="w-24 rounded-lg border border-line bg-bg px-2 py-1.5 text-sm"
+            className="min-w-[6rem] flex-1 rounded-lg border border-line bg-bg px-2 py-1.5 text-sm sm:flex-none sm:w-24"
             value={ano}
             onChange={(e) => setAno(Number(e.target.value))}
           >
@@ -134,7 +134,7 @@ export default function Relatorios() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:text-text"
+            className="flex-1 rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:text-text sm:flex-none"
           >
             Imprimir
           </button>
@@ -176,10 +176,10 @@ export default function Relatorios() {
             </p>
           ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <section className="rounded-xl border border-line bg-panel p-4">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <section className="min-w-0 rounded-xl border border-line bg-panel p-4">
               <h2 className="mb-3 font-semibold">Custo por causa</h2>
-              <div className="h-56 w-full">
+              <div className="h-56 w-full min-w-0">
                 {chartCausa.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartCausa}>

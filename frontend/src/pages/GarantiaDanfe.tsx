@@ -523,11 +523,11 @@ export default function GarantiaDanfe() {
         </Link>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-line bg-panel p-6">
+      <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-line bg-panel p-4 sm:p-6">
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-cyan">Nota fiscal</h3>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="sm:col-span-2">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-3">
+            <div className="min-w-0 sm:col-span-2">
               <Label htmlFor="nf-remessa">Nº NF remessa *</Label>
               <Input
                 id="nf-remessa"
@@ -546,8 +546,8 @@ export default function GarantiaDanfe() {
               />
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            <div className="min-w-0">
               <Label htmlFor="nf-emissao">Emissão *</Label>
               <Input
                 id="nf-emissao"
@@ -570,8 +570,8 @@ export default function GarantiaDanfe() {
               />
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            <div className="min-w-0">
               <Label htmlFor="nf-origem">NF origem *</Label>
               <Input
                 id="nf-origem"
@@ -804,7 +804,7 @@ export default function GarantiaDanfe() {
         {msg ? <p className="text-sm text-green">{msg}</p> : null}
 
         <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-          <Button type="submit" disabled={loading} size="lg">
+          <Button type="submit" disabled={loading} size="lg" className="w-full sm:w-auto">
             {loading
               ? "Salvando…"
               : podeFecharImp && comoImprocedente

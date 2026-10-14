@@ -179,15 +179,35 @@ export default function GarantiasList() {
     setParams(next, { replace: true });
   }
 
+  const emptyState = (
+    <div className="px-3 py-12 text-center">
+      <p className="text-base font-medium text-ink">Nenhuma nota ainda</p>
+      <p className="mt-1 text-sm text-muted">Cadastre a primeira nota com a foto da NF.</p>
+      {canCreateGarantia(user?.perfil) ? (
+        <Button
+          render={<Link to="/garantias/nova-danfe" />}
+          className="mt-4 w-full sm:w-auto"
+          size="lg"
+        >
+          Cadastrar nota
+        </Button>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="text-sm text-muted">Notas de {ano}</p>
           <p className="text-xs text-muted">Cadastre a nota, anexe a foto e acompanhe o valor.</p>
         </div>
         {canCreateGarantia(user?.perfil) ? (
-          <Button render={<Link to="/garantias/nova-danfe" />} size="lg">
+          <Button
+            render={<Link to="/garantias/nova-danfe" />}
+            size="lg"
+            className="w-full sm:w-auto"
+          >
             Cadastrar nota
           </Button>
         ) : null}
@@ -209,49 +229,115 @@ export default function GarantiasList() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {FILTROS.map((f) => (
-          <button
-            key={f.value || "todas"}
-            type="button"
-            onClick={() => setFiltro(f.value)}
-            className={
-              status === f.value
-                ? "rounded-lg bg-cyan/20 px-3 py-1.5 text-sm font-semibold text-cyan"
-                : "rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:text-ink"
-            }
-          >
-            {f.label}
-          </button>
-        ))}
-        <select
-          className="ml-auto rounded-lg border border-line bg-bg px-2 py-1.5 text-sm"
-          value={anos.includes(ano) ? ano : String(anoAtual)}
-          onChange={(e) => {
-            const next = new URLSearchParams(params);
-            next.set("ano", e.target.value);
-            setParams(next, { replace: true });
-          }}
-          title="Ano"
-        >
-          {anos.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex flex-wrap gap-2">
+          {FILTROS.map((f) => (
+            <button
+              key={f.value || "todas"}
+              type="button"
+              onClick={() => setFiltro(f.value)}
+              className={
+                status === f.value
+                  ? "rounded-lg bg-cyan/20 px-3 py-1.5 text-sm font-semibold text-cyan"
+                  : "rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:text-ink"
+              }
+            >
+              {f.label}
+            </button>
           ))}
-        </select>
-        <Input
-          className="min-w-[160px] sm:w-52"
-          placeholder="Buscar NF, peça…"
-          value={qInput}
-          onChange={(e) => setQInput(e.target.value)}
-        />
+        </div>
+        <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
+          <select
+            className="w-full rounded-lg border border-line bg-bg px-2 py-1.5 text-sm sm:w-auto"
+            value={anos.includes(ano) ? ano : String(anoAtual)}
+            onChange={(e) => {
+              const next = new URLSearchParams(params);
+              next.set("ano", e.target.value);
+              setParams(next, { replace: true });
+            }}
+            title="Ano"
+          >
+            {anos.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+          <Input
+            className="w-full sm:w-52"
+            placeholder="Buscar NF, peça…"
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
+          />
+        </div>
       </div>
 
       {error ? <p className="text-red">{error}</p> : null}
       {loading ? <p className="text-muted">Carregando…</p> : null}
 
-      <div className="overflow-x-auto rounded-xl border border-line bg-panel">
+      {/* Cards — mobile */}
+      <div className="space-y-3 md:hidden">
+        {rows.map((r) => (
+          <article
+            key={r.id}
+            className="rounded-xl border border-line bg-panel p-4 text-sm"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <Link
+                  className="font-semibold text-cyan hover:underline"
+                  to={`/garantias/${r.id}`}
+                >
+                  {r.nf_remessa || r.protocolo}
+                </Link>
+                <p className="truncate text-xs text-muted">{r.fornecedor_nome}</p>
+              </div>
+              <BadgeStatus status={r.status} />
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div className="min-w-0">
+                <dt className="text-muted">Peça</dt>
+                <dd className="truncate font-medium">{r.peca_nome}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-muted">Carro</dt>
+                <dd className="truncate font-medium">{r.veiculo_codigo}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-muted">Valor</dt>
+                <dd className="font-medium tabular-nums">{money(r.valor_peca)}</dd>
+              </div>
+            </dl>
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+              <Button
+                render={<Link to={`/garantias/${r.id}`} />}
+                size="sm"
+                className="flex-1"
+              >
+                Ver
+              </Button>
+              {canDeleteGarantia(user?.perfil, r.status) ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={deletingId === r.id}
+                  onClick={() => setToDelete(r)}
+                  className="flex-1"
+                >
+                  {deletingId === r.id ? "…" : "Excluir"}
+                </Button>
+              ) : null}
+            </div>
+          </article>
+        ))}
+        {!loading && !rows.length ? (
+          <div className="rounded-xl border border-line bg-panel">{emptyState}</div>
+        ) : null}
+      </div>
+
+      {/* Tabela — desktop */}
+      <div className="hidden overflow-x-auto rounded-xl border border-line bg-panel md:block">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-line text-muted">
             <tr>
@@ -299,21 +385,7 @@ export default function GarantiasList() {
             ))}
             {!loading && !rows.length ? (
               <tr>
-                <td colSpan={6} className="px-3 py-12 text-center">
-                  <p className="text-base font-medium text-ink">Nenhuma nota ainda</p>
-                  <p className="mt-1 text-sm text-muted">
-                    Cadastre a primeira nota com a foto da NF.
-                  </p>
-                  {canCreateGarantia(user?.perfil) ? (
-                    <Button
-                      render={<Link to="/garantias/nova-danfe" />}
-                      className="mt-4"
-                      size="lg"
-                    >
-                      Cadastrar nota
-                    </Button>
-                  ) : null}
-                </td>
+                <td colSpan={6}>{emptyState}</td>
               </tr>
             ) : null}
           </tbody>

@@ -689,27 +689,27 @@ export default function GarantiaFicha() {
   const casoFechado = STATUS_FECHADO.has(g.status);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <div className="min-w-0 space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <Link to="/" className="text-xs text-cyan hover:underline">
             ← Voltar às notas
           </Link>
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold break-words">
             Nota {g.nf_remessa || g.protocolo}
           </h2>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-muted break-words">
             {g.peca_nome} · Carro {g.veiculo_codigo} · {g.fornecedor_nome}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <BadgeStatus status={g.status} />
           {allowDelete ? (
             <button
               type="button"
               disabled={deleting}
               onClick={() => void excluirGarantia()}
-              className="rounded-lg border border-red/40 px-3 py-1.5 text-sm text-red disabled:opacity-50"
+              className="w-full rounded-lg border border-red/40 px-3 py-1.5 text-sm text-red disabled:opacity-50 sm:w-auto"
             >
               {deleting ? "Excluindo…" : "Excluir"}
             </button>
@@ -724,8 +724,8 @@ export default function GarantiaFicha() {
       {error ? <p className="text-sm text-red">{error}</p> : null}
       {msg ? <p className="text-sm text-green">{msg}</p> : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+        <section className="min-w-0 space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
           <h3 className="font-semibold">Dados</h3>
           {podeEditarDanfe ? (
             <div className="space-y-3">
@@ -862,7 +862,7 @@ export default function GarantiaFicha() {
           )}
         </section>
 
-        <section className="space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
+        <section className="min-w-0 space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
           <h3 className="font-semibold">NFs SGGI</h3>
           <p>
             <span className="text-muted">NF compra:</span> {g.nf_compra || "—"}
@@ -1163,7 +1163,7 @@ export default function GarantiaFicha() {
 
       <section
         id="acoes"
-        className="space-y-3 rounded-xl border border-line bg-panel p-4 scroll-mt-4"
+        className="min-w-0 space-y-3 rounded-xl border border-line bg-panel p-4 scroll-mt-4"
       >
         <div>
           <h3 className="font-semibold">O que fazer agora</h3>
@@ -1209,11 +1209,11 @@ export default function GarantiaFicha() {
               />
             )}
             {allowAdvance && (g.status === "aberta" || g.status === "enviada") && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button
                   type="button"
                   onClick={avancarFluxo}
-                  className="rounded-lg bg-amber/20 px-4 py-2 text-sm text-amber"
+                  className="w-full rounded-lg bg-amber/20 px-4 py-2 text-sm text-amber sm:w-auto"
                 >
                   {g.status === "aberta" ? "Marcar como enviada" : "Marcar em análise"}
                 </button>
@@ -1471,17 +1471,17 @@ export default function GarantiaFicha() {
                       />
                     </label>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                     <button
                       type="button"
-                      className="rounded-lg bg-red/20 px-4 py-2 text-sm text-red"
+                      className="w-full rounded-lg bg-red/20 px-4 py-2 text-sm text-red sm:w-auto"
                       onClick={() => mudarStatus("improcedente")}
                     >
                       Improcedente
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg bg-violet/20 px-4 py-2 text-sm text-violet"
+                      className="w-full rounded-lg bg-violet/20 px-4 py-2 text-sm text-violet sm:w-auto"
                       onClick={() => mudarStatus("cortesia")}
                     >
                       Cortesia
@@ -1494,19 +1494,20 @@ export default function GarantiaFicha() {
             {allowAnexar ? (
               <form
                 onSubmit={uploadAnexo}
-                className="flex flex-wrap items-end gap-2 border-t border-line pt-3"
+                className="flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:flex-wrap sm:items-end"
               >
-                <div>
+                <div className="min-w-0 flex-1">
                   <label className="mb-1 block text-xs text-muted">Anexar PDF</label>
                   <input
                     type="file"
                     accept=".pdf,image/*"
+                    className="max-w-full text-sm"
                     onChange={(e) => setArquivo(e.target.files?.[0] || null)}
                   />
                 </div>
                 <button
                   type="submit"
-                  className="rounded-lg border border-line px-3 py-2 text-sm text-cyan"
+                  className="w-full rounded-lg border border-line px-3 py-2 text-sm text-cyan sm:w-auto"
                 >
                   Enviar anexo
                 </button>
